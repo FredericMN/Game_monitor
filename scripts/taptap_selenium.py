@@ -1,257 +1,326 @@
-# taptap_selenium.py
-# 使用 Selenium 抓取 TapTap 网站内容
+# scripts/taptap_selenium.py
+# 基于 crawler.py 更新，用于抓取 TapTap 日历页面的游戏信息
 
-# 导入必要的库
 import os
 import time
-import json
+import random
 from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+# 注意：这里使用 Edge，如果你想用 Chrome，需要改为 ChromeDriverManager 和 webdriver.Chrome
+from selenium.webdriver.edge.service import Service as EdgeService
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
-# 保存结果的文件夹
+# 保存结果的文件夹 (如果需要调试保存页面)
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
-def setup_driver():
-    """
-    配置并初始化 Chrome 浏览器
-    """
-    # 设置 Chrome 浏览器选项
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # 无界面模式
-    chrome_options.add_argument("--disable-gpu")  # 禁用 GPU 加速
-    chrome_options.add_argument("--window-size=1920,1080")  # 设置窗口大小
-    chrome_options.add_argument("--no-sandbox")  # 禁用沙盒模式
-    chrome_options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm 使用
-    chrome_options.add_argument("--disable-web-security")  # 禁用同源策略
-    chrome_options.add_argument("--allow-running-insecure-content")  # 允许运行不安全内容
-    
-    # 添加用户代理，模拟真实浏览器
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36")
-    
-    # 初始化 Chrome 浏览器
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    return driver
+def random_delay(min_sec=0.5, max_sec=1.5):
+    """避免爬取过快"""
+    time.sleep(random.uniform(min_sec, max_sec))
 
-def get_taptap_daily_games(url):
+def setup_driver(headless=True):
     """
-    获取 TapTap 日历页面的游戏信息
-    
-    参数:
-        url (str): TapTap 日历页面的 URL
-        
-    返回:
-        list: 包含游戏信息的字典列表
+    配置并初始化 Edge 浏览器
     """
-    print(f"正在访问 TapTap 日历页面: {url}")
-    
-    # 初始化 Chrome 浏览器
-    driver = setup_driver()
+    options = webdriver.EdgeOptions()
+    if headless:
+        options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36")
     
     try:
-        # 访问目标网页
-        driver.get(url)
-        print("页面加载中...")
-        
-        # 等待页面加载完成（尝试多种可能的选择器）
-        try:
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((
-                    By.CSS_SELECTOR, 
-                    ".app-calendar-container, .game-list, .game-item, .card-wrap"
-                ))
-            )
-            # 成功找到某个元素
-            print("页面元素加载成功")
-        except Exception as e:
-            print(f"等待页面元素超时，将尝试继续解析: {e}")
-        
-        # 适当等待，确保动态内容加载完成
-        time.sleep(5)
-        
-        # 尝试执行一些滚动，以确保动态内容加载
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/3);")
-        time.sleep(2)
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
-        time.sleep(2)
-        
-        # 获取页面源代码
-        page_source = driver.page_source
-        
-        # 将页面源代码保存到文件，方便调试
-        with open(os.path.join(DATA_DIR, 'taptap_page.html'), 'w', encoding='utf-8') as f:
-            f.write(page_source)
-        print(f"页面源代码已保存到 {os.path.join(DATA_DIR, 'taptap_page.html')}")
-        
-        # 使用 BeautifulSoup 解析页面
-        soup = BeautifulSoup(page_source, 'lxml')
-        
-        # 尝试多种可能的容器选择器
-        containers = [
-            # 日历页面选择器
-            soup.select(".app-calendar-container"),
-            # 排行榜页面选择器
-            soup.select(".game-list"),
-            # 首页选择器
-            soup.select(".card-wrap"),
-            # 其他可能的容器
-            soup.select(".main-container")
-        ]
-        
-        # 找到非空容器
-        container = None
-        for c in containers:
-            if c and len(c) > 0:
-                container = c
-                break
-        
-        if not container:
-            print("未找到游戏容器，可能页面结构已变化")
-            return []
-        
-        # 从容器中查找游戏项
-        game_items = []
-        for cont in container:
-            # 尝试多种可能的游戏项选择器
-            items = (
-                cont.select(".app-calendar-item") or
-                cont.select(".game-item") or
-                cont.select(".card-middle") or
-                cont.select(".app-item")
-            )
-            if items:
-                game_items.extend(items)
-        
-        if not game_items:
-            print("未找到游戏项，可能页面结构已变化")
-            return []
-        
-        print(f"找到 {len(game_items)} 个游戏项")
-        
-        # 解析每个游戏的信息
-        games_data = []
-        for item in game_items:
-            try:
-                # 游戏名称
-                name_elem = (
-                    item.select_one(".app-calendar-item-title") or
-                    item.select_one(".title") or
-                    item.select_one(".name") or
-                    item.select_one("h3, h4")
-                )
-                name = name_elem.text.strip() if name_elem else "未知名称"
-                
-                # 游戏链接
-                link_elem = item.select_one("a")
-                link = link_elem.get("href") if link_elem else ""
-                if link and not link.startswith("http"):
-                    link = f"https://www.taptap.cn{link}"
-                
-                # 游戏状态（如测试招募、首发等）
-                status_elem = (
-                    item.select_one(".app-calendar-item-tag") or
-                    item.select_one(".tag") or
-                    item.select_one(".status")
-                )
-                status = status_elem.text.strip() if status_elem else "未知状态"
-                
-                # 游戏评分
-                rating_elem = (
-                    item.select_one(".app-calendar-item-rating") or
-                    item.select_one(".rating") or
-                    item.select_one(".score")
-                )
-                rating = rating_elem.text.strip() if rating_elem else "暂无评分"
-                
-                # 游戏分类
-                category_elem = (
-                    item.select_one(".app-calendar-item-category") or
-                    item.select_one(".category") or
-                    item.select_one(".info")
-                )
-                category = category_elem.text.strip() if category_elem else "未知分类"
-                
-                # 游戏图标
-                icon_elem = item.select_one("img")
-                icon_url = icon_elem.get("src") if icon_elem else ""
-                
-                # 组装游戏数据
-                game_data = {
-                    "name": name,
-                    "link": link,
-                    "status": status,
-                    "rating": rating,
-                    "category": category,
-                    "icon_url": icon_url,
-                    "source": "TapTap",
-                    "date": datetime.now().strftime("%Y-%m-%d")
-                }
-                
-                games_data.append(game_data)
-                print(f"已提取游戏信息: {name}")
-                
-            except Exception as e:
-                print(f"解析游戏信息时出错: {e}")
-                continue
-        
-        return games_data
-        
+        service = EdgeService(EdgeChromiumDriverManager().install())
+        driver = webdriver.Edge(service=service, options=options)
+        print("Edge WebDriver 初始化成功。")
+        return driver
     except Exception as e:
-        print(f"访问页面或提取数据时出错: {e}")
-        return []
-        
-    finally:
-        # 关闭浏览器
-        driver.quit()
-        print("浏览器已关闭")
+        print(f"初始化 Edge WebDriver 时出错: {e}")
+        return None
 
-def save_to_json(data, filename):
+def get_taptap_games_for_date(target_date_str):
     """
-    将数据保存为 JSON 文件
-    
+    获取指定日期的 TapTap 游戏信息。
+    参考自 crawler.py 中的 crawl_one_day。
+
     参数:
-        data: 要保存的数据
-        filename (str): 文件名
-    """
-    file_path = os.path.join(DATA_DIR, filename)
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"数据已保存到 {file_path}")
+        target_date_str (str): 目标日期，格式 "YYYY-MM-DD"
 
+    返回:
+        list: 包含游戏信息字典的列表 [{'name': ..., 'status': ..., 'publisher': ..., 'category': ..., 'rating': ..., 'date': ...}]，如果出错则返回空列表。
+    """
+    print(f"开始抓取 TapTap 日期 {target_date_str} 的游戏信息...")
+    driver = setup_driver(headless=True) # 默认使用无头模式
+    if not driver:
+        return []
+
+    results = []
+    url = f"https://www.taptap.cn/app-calendar/{target_date_str}"
+
+    try:
+        driver.get(url)
+        print(f"已访问: {url}")
+
+        # 等待页面主要内容加载
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.daily-event-list__content"))
+            )
+            print("页面主要内容加载完成。")
+        except TimeoutException:
+            print("等待页面主要内容超时或未找到元素。可能是该日期无游戏或页面结构改变。")
+            # 即使超时，也尝试查找游戏元素，可能只是部分加载
+            pass
+        except Exception as e:
+             print(f"等待页面元素时发生错误: {e}")
+             # 发生其他异常，可能无法继续
+             driver.quit()
+             return []
+
+        # 查找游戏元素
+        # 使用 find_elements 以防当天没有游戏
+        game_elements = driver.find_elements(By.CSS_SELECTOR, "div.daily-event-list__content > a.tap-router")
+
+        if not game_elements:
+            print(f"日期 {target_date_str} 未找到游戏信息。")
+            driver.quit()
+            return []
+
+        print(f"找到 {len(game_elements)} 个潜在的游戏条目。开始提取信息...")
+
+        # 记录原始窗口句柄
+        original_window = driver.current_window_handle
+
+        for index, g_element in enumerate(game_elements):
+            print(f"-- 处理第 {index + 1} 个游戏 --")
+            random_delay()
+            # Initialize all fields
+            name, status, publisher, category, rating = "未知名称", "未知状态", "未知厂商", "未知类型", "未知评分"
+            platform, description, link = "未知平台", "", ""
+
+            # --- 在列表页提取信息 --- 
+            try:
+                # 名称
+                name_el = g_element.find_element(By.CSS_SELECTOR, "div.daily-event-app-info__title")
+                name = name_el.get_attribute("content").strip()
+                print(f"  名称: {name}")
+            except NoSuchElementException:
+                print("  未找到名称元素")
+            except Exception as e:
+                 print(f"  提取名称时出错: {e}")
+
+            try:
+                # 类型/标签
+                tag_elements = g_element.find_elements(By.CSS_SELECTOR, "div.daily-event-app-info__tag div.tap-label-tag")
+                category = "/".join([t.text.strip() for t in tag_elements]) if tag_elements else "未知类型"
+                print(f"  类型: {category}")
+            except NoSuchElementException:
+                 print("  未找到类型标签元素")
+            except Exception as e:
+                 print(f"  提取类型时出错: {e}")
+
+            try:
+                # 评分
+                rating_el = g_element.find_element(By.CSS_SELECTOR, "div.daily-event-app-info__rating .tap-rating__number")
+                rating = rating_el.text.strip()
+                print(f"  评分: {rating}")
+            except NoSuchElementException:
+                # 评分可能不存在，是正常情况
+                rating = "暂无评分"
+                print("  未找到评分元素 (可能是暂无评分)")
+            except Exception as e:
+                 print(f"  提取评分时出错: {e}")
+
+            try:
+                # 状态 (尝试两种可能的选择器)
+                try:
+                    status_el = g_element.find_element(By.CSS_SELECTOR, "span.event-type-label__title")
+                    status = status_el.text.strip()
+                except NoSuchElementException:
+                    status_el = g_element.find_element(By.CSS_SELECTOR, "div.event-recommend-label__title")
+                    status = status_el.text.strip()
+                print(f"  状态: {status}")
+            except NoSuchElementException:
+                print("  未找到状态元素")
+                status = "未知状态" # 确保有默认值
+            except Exception as e:
+                 print(f"  提取状态时出错: {e}")
+
+            # --- 访问详情页提取厂商、平台、简介、链接 --- 
+            publisher = "未知厂商"
+            try:
+                href = g_element.get_attribute("href")
+                if href:
+                    if not href.startswith("http"):
+                        link = "https://www.taptap.cn" + href
+                    else:
+                        link = href # Store the detail page URL
+                        
+                    print(f"  尝试访问详情页: {link}")
+                    
+                    # 在新标签页打开
+                    driver.execute_script("window.open(arguments[0]);", link)
+                    WebDriverWait(driver, 10).until(EC.number_of_windows_to_be(2))
+                    
+                    new_window = [window for window in driver.window_handles if window != original_window][0]
+                    driver.switch_to.window(new_window)
+                    print(f"  已切换到新窗口: {driver.current_url}")
+                    random_delay(1, 2) # 给详情页加载时间
+
+                    # --- 在详情页提取 厂商, 平台, 简介 --- 
+                    try:
+                        # --- 提取厂商 (逻辑不变) ---
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.row-card.app-intro"))
+                        )
+                        print("  详情页介绍容器已加载。")
+                        info_elements = driver.find_elements(By.CSS_SELECTOR, "div.flex-center--y a.tap-router")
+                        possible_publishers = {}
+                        for elem in info_elements:
+                            try:
+                                label_element = elem.find_element(By.CSS_SELECTOR, "div.gray-06.mr-6")
+                                label = label_element.text.strip()
+                                value_element = elem.find_element(By.CSS_SELECTOR, "div.tap-text.tap-text__one-line")
+                                value = value_element.text.strip()
+                                if label and value:
+                                    possible_publishers[label] = value
+                                    print(f"    找到标签: {label}, 值: {value}")
+                            except Exception:
+                                continue
+                                
+                        priority = ["厂商", "发行", "开发"]
+                        found_publisher = False
+                        for key in priority:
+                            if key in possible_publishers:
+                                publisher = possible_publishers[key]
+                                print(f"  根据优先级 '{key}' 确定厂商为: {publisher}")
+                                found_publisher = True
+                                break
+                        if not found_publisher:
+                             print("  未能根据优先级找到厂商信息，保留 '未知厂商'。")
+                             
+                        # --- 提取平台 --- 
+                        try:
+                            platform_elements = driver.find_elements(By.CSS_SELECTOR, ".platform-picker-switch__item div")
+                            # Filter out potential empty divs or other non-platform text
+                            platforms = [elem.text.strip() for elem in platform_elements if elem.text.strip()]
+                            if platforms:
+                                platform = "/".join(platforms) # Join all found platforms
+                                print(f"  平台: {platform}")
+                            else:
+                                print("  未找到有效的平台信息文本。")
+                                platform = "未知平台"
+                        except NoSuchElementException:
+                            print("  未找到平台信息元素。")
+                            platform = "未知平台" # Default if not found
+                        except Exception as plat_e:
+                            print(f"  提取平台信息时出错: {plat_e}")
+                            platform = "未知平台"
+                            
+                        # --- 提取简介 --- 
+                        try:
+                            description_element = driver.find_element(By.CSS_SELECTOR, "div.app-intro__summary span")
+                            description = description_element.text.strip()
+                            print(f"  简介: {description[:50]}..." if description else "无简介") # Print first 50 chars
+                        except NoSuchElementException:
+                            print("  未找到简介元素。")
+                            description = ""
+                        except Exception as desc_e:
+                            print(f"  提取简介时出错: {desc_e}")
+                            description = ""
+                            
+                    except TimeoutException:
+                        print("  等待详情页介绍容器超时。")
+                    except Exception as detail_e:
+                        print(f"  在详情页提取信息时出错: {detail_e}")
+
+                    # 关闭新标签页并切回
+                    print("  关闭详情页窗口并切回列表页。")
+                    driver.close()
+                    driver.switch_to.window(original_window)
+                    # 确认切换成功
+                    WebDriverWait(driver, 5).until(EC.number_of_windows_to_be(1))
+                    print(f"  已切回原始窗口: {driver.current_url}")
+                else:
+                    print("  未找到游戏详情页链接。")
+
+            except Exception as href_e:
+                print(f"  处理详情页链接或切换窗口时出错: {href_e}")
+                # 如果窗口切换出错，尝试恢复到原始窗口
+                try:
+                    if len(driver.window_handles) > 1:
+                         driver.close() # 关闭可能残留的窗口
+                    driver.switch_to.window(original_window)
+                except Exception as recovery_e:
+                    print(f"  尝试恢复窗口时出错: {recovery_e}")
+                    # 如果无法恢复，可能需要退出并清理
+                    raise # 重新抛出异常，让外部知道出错了
+
+            results.append({
+                "name": name,
+                "platform": platform, # 新增平台
+                "status": status,
+                "publisher": publisher,
+                "category": category,
+                "rating": rating,
+                "description": description, # 新增简介
+                "link": link, # 新增链接
+                "date": target_date_str, 
+                "source": "TapTap" 
+            })
+            print(f"-- 第 {index + 1} 个游戏处理完毕 --\n")
+
+    except Exception as e:
+        print(f"抓取过程中发生未预料的错误: {e}")
+        # 可以考虑保存当前页面源码供调试
+        # try:
+        #     with open(os.path.join(DATA_DIR, f'taptap_error_{target_date_str}.html'), 'w', encoding='utf-8') as f:
+        #         f.write(driver.page_source)
+        #     print("错误页面源码已保存。")
+        # except Exception as save_e:
+        #      print(f"保存错误页面源码失败: {save_e}")
+
+    finally:
+        if driver:
+            driver.quit()
+            print("浏览器已关闭。")
+
+    print(f"TapTap 日期 {target_date_str} 抓取完成，共获取 {len(results)} 条有效数据。")
+    return results
+
+# --- 主程序入口 (用于测试) --- #
 if __name__ == "__main__":
-    # 尝试多个 TapTap 相关页面
-    urls = [
-        "https://www.taptap.cn/app-calendar/2025-04-07",
-        "https://www.taptap.cn/top/download",  # 热门榜单页面
-        "https://www.taptap.cn/mobile"         # 首页
-    ]
+    # 测试获取特定日期的数据
+    # test_date = datetime.now().strftime("%Y-%m-%d") # 默认测试当天
+    test_date = "2025-04-07" # 或者指定一个日期进行测试
     
-    all_games = []
+    print(f"\n === 开始测试 TapTap 抓取 ({test_date}) === \n")
+    games_data = get_taptap_games_for_date(test_date)
     
-    # 尝试访问多个页面，直到成功获取数据
-    for url in urls:
-        print(f"\n尝试从 URL {url} 获取数据")
-        games = get_taptap_daily_games(url)
-        
-        if games:
-            all_games.extend(games)
-            print(f"成功从 {url} 获取 {len(games)} 个游戏的信息")
-            break  # 成功获取数据后退出循环
-    
-    # 检查是否成功获取数据
-    if all_games:
-        print(f"\n总共获取 {len(all_games)} 个游戏的信息")
-        
-        # 保存为 JSON 文件
-        save_to_json(all_games, "taptap_games.json")
+    if games_data:
+        print(f"\n === 测试结果 ({len(games_data)} 条) === ")
+        # 打印所有获取到的游戏信息，包含新字段
+        for i, game in enumerate(games_data):
+            print(f"[{i+1}] 名称: {game.get('name', 'N/A')}")
+            print(f"    平台: {game.get('platform', 'N/A')}")
+            print(f"    状态: {game.get('status', 'N/A')}")
+            print(f"    厂商: {game.get('publisher', 'N/A')}")
+            print(f"    评分: {game.get('rating', 'N/A')}")
+            print(f"    链接: {game.get('link', 'N/A')}")
+            desc = game.get('description', '')
+            print(f"    简介: {desc[:30]}..." if desc else "无")
+            print("---")
+        # 可以选择保存到 JSON 文件
+        # import json
+        # test_output_path = os.path.join(DATA_DIR, f'taptap_test_{test_date}.json')
+        # with open(test_output_path, 'w', encoding='utf-8') as f:
+        #     json.dump(games_data, f, ensure_ascii=False, indent=2)
+        # print(f"\n测试结果已保存到: {test_output_path}")
     else:
-        print("\n未获取到游戏数据") 
+        print("\n === 测试未获取到数据 ===") 
