@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏动态监控</title>
+    <link rel="stylesheet" href="style.css"> <!-- 链接外部 CSS 文件 -->
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo">游戏导航</div>
+        <ul>
+            <li><a href="#" class="active">全部游戏</a></li>
+            <li><a href="#">即将推出</a></li>
+            <li><a href="#">热门关注</a></li>
+            <!-- 可以添加更多导航链接 -->
+        </ul>
+    </nav>
+
+    <div class="container">
+        <!-- 重点关注区域 -->
+        <div class="top-games">
+            <h2 class="section-title">重点关注</h2>
+            <div class="game-list">
+                <!-- 这里最多放 8 个卡片，现在是示例 -->
+                <!-- 示例游戏卡片 1 -->
+                <div class="game-card">
+                    <h3>游戏 A</h3>
+                    <p><span class="label">状态/计划:</span> <span class="status-tag status-online">已上线</span></p>
+                    <p><span class="label">预计时间:</span> 2024-01-15</p>
+                    <p><span class="label">平台:</span> PC, PS5</p>
+                    <p><span class="label">简介:</span> 这是一款角色扮演游戏...</p>
+                </div>
+
+                <!-- 示例游戏卡片 2 -->
+                <div class="game-card">
+                    <h3>游戏 B</h3>
+                    <p><span class="label">状态/计划:</span> <span class="status-tag status-testing">首次测试</span></p>
+                    <p><span class="label">预计时间:</span> 2024-08-01</p>
+                    <p><span class="label">平台:</span> PC</p>
+                    <p><span class="label">简介:</span> 多人在线竞技游戏...</p>
+                </div>
+
+                <!-- 示例游戏卡片 3 -->
+                <div class="game-card">
+                    <h3>新项目 C</h3>
+                    <p><span class="label">状态/计划:</span> <span class="status-tag status-dev">开发中</span></p>
+                    <p><span class="label">预计时间:</span> 预计 2025 Q1</p>
+                    <p><span class="label">平台:</span> PC, Xbox</p>
+                    <p><span class="label">简介:</span> 开放世界冒险...</p>
+                </div>
+
+                <!-- 示例游戏卡片 4 -->
+                <div class="game-card">
+                    <h3>移动端 D</h3>
+                    <p><span class="label">状态/计划:</span> <span class="status-tag status-preorder">预约中</span></p>
+                    <p><span class="label">预计时间:</span> 2024-09-10</p>
+                    <p><span class="label">平台:</span> iOS, Android</p>
+                    <p><span class="label">简介:</span> 休闲益智类...</p>
+                </div>
+                 <!-- 未来可以用 JavaScript 动态添加更多卡片, 并限制最多 8 个 -->
+            </div>
+        </div>
+
+        <!-- 全部游戏列表区域 -->
+        <div class="all-games-table">
+            <h2 class="section-title">全部游戏列表</h2>
+            <table class="styled-table">
+                <thead>
+                    <tr>
+                        <th>游戏名称</th>
+                        <th>状态/计划</th>
+                        <th>预计时间</th>
+                        <th>平台</th>
+                        <th>简介</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 这里是示例数据，将来会由后端动态填充 -->
+                     <tr>
+                        <td>游戏 A</td>
+                        <td><span class="status-tag status-online">已上线</span></td>
+                        <td>2024-01-15</td>
+                        <td>PC, PS5</td>
+                        <td>这是一款角色扮演游戏...</td>
+                    </tr>
+                    <tr>
+                        <td>游戏 B</td>
+                        <td><span class="status-tag status-testing">首次测试</span></td>
+                        <td>2024-08-01</td>
+                        <td>PC</td>
+                        <td>多人在线竞技游戏...</td>
+                    </tr>
+                    <tr>
+                        <td>新项目 C</td>
+                        <td><span class="status-tag status-dev">开发中</span></td>
+                        <td>预计 2025 Q1</td>
+                        <td>PC, Xbox</td>
+                        <td>开放世界冒险...</td>
+                    </tr>
+                    <tr>
+                        <td>移动端 D</td>
+                        <td><span class="status-tag status-preorder">预约中</span></td>
+                        <td>2024-09-10</td>
+                        <td>iOS, Android</td>
+                        <td>休闲益智类...</td>
+                    </tr>
+                    <!-- 可以添加更多行 -->
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+</body>
+</html> 
