@@ -2,12 +2,19 @@
 
 # 脚本用于启动开发环境：后端 Flask 服务器和前端 HTTP 服务器
 
-# 定义日志文件路径
-BACKEND_LOG="../backend.log"
-FRONTEND_LOG="../frontend.log"
+# 检查虚拟环境是否存在 (检查 venv 目录)
+if [ ! -d "./venv" ]; then
+    echo "错误：找不到虚拟环境目录 'venv'"
+    echo "请确保已在项目根目录创建了名为 'venv' 的虚拟环境 (python3 -m venv venv) 并安装了依赖。"
+    exit 1
+fi
+
+# 定义日志文件路径 (相对于脚本位置 - 项目根目录)
+BACKEND_LOG="./backend.log"
+FRONTEND_LOG="./frontend.log"
 
 # 清理旧日志文件 (可选)
-rm -f ../backend.log ../frontend.log
+rm -f ./backend.log ./frontend.log
 
 # 设置退出时清理后台进程的函数
 cleanup() {
@@ -21,27 +28,38 @@ cleanup() {
         kill $frontend_pid
         echo "前端服务器 (PID: $frontend_pid) 已停止。"
     fi
-    # echo "日志文件保存在 backend.log 和 frontend.log" # 可选提示
     exit 0
 }
 
 # 捕获 Ctrl+C (SIGINT) 和终止信号 (SIGTERM) 并调用 cleanup 函数
 trap cleanup SIGINT SIGTERM
 
-echo "正在启动后端 Flask 服务器 (日志写入 backend.log)..."
+echo "正在启动后端 Flask 服务器 (使用 venv, 日志写入 backend.log)..."
 cd backend
-# 使用 python3 启动，并在后台运行 (&)
-# 将标准输出和错误输出重定向到日志文件
-python3 app.py > "$BACKEND_LOG" 2>&1 &
+# 使用相对于当前目录 (backend) 的正确路径调用 venv python
+../venv/bin/python app.py > ../backend.log 2>&1 &
 backend_pid=$! # 获取后台进程的 PID
+# 检查进程是否成功启动 (可选)
+if ! kill -0 $backend_pid 2>/dev/null; then
+    echo "错误：启动后端服务器失败。请检查 backend.log 文件。"
+    cd ..
+    exit 1
+fi
 cd ..
 
-echo "正在启动前端 HTTP 服务器 (端口 8000, 日志写入 frontend.log)..."
+echo "正在启动前端 HTTP 服务器 (使用 venv, 端口 8000, 日志写入 frontend.log)..."
 cd frontend
-# 使用 python3 启动，监听 8000 端口，并在后台运行 (&)
-# 将标准输出和错误输出重定向到日志文件
-python3 -m http.server 8000 > "$FRONTEND_LOG" 2>&1 &
+# 使用相对于当前目录 (frontend) 的正确路径调用 venv python
+../venv/bin/python -m http.server 8000 > ../frontend.log 2>&1 &
 frontend_pid=$! # 获取后台进程的 PID
+# 检查进程是否成功启动 (可选)
+if ! kill -0 $frontend_pid 2>/dev/null; then
+    echo "错误：启动前端服务器失败。请检查 frontend.log 文件。"
+    cd ..
+    # 尝试清理后端进程
+    if kill -0 $backend_pid 2>/dev/null; then kill $backend_pid; fi
+    exit 1
+fi
 cd ..
 
 echo "等待服务器启动... (PID 后端: $backend_pid, 前端: $frontend_pid)"
