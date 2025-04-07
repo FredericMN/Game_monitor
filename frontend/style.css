@@ -114,6 +114,8 @@ body {
 .status-testing { background-color: #f39c12; } /* 橙色 - 测试 */
 .status-dev { background-color: #3498db; } /* 蓝色 - 开发中 */
 .status-preorder { background-color: #9b59b6; } /* 紫色 - 预约中 */
+.status-update { background-color: #7f8c8d; } /* 新增：灰色 - 更新 */
+.status-other { background-color: #bdc3c7; } /* 新增：浅灰色 - 其他 */
 
 
 /* 全游戏列表表格样式 */
