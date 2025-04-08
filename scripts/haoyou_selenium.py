@@ -1,213 +1,321 @@
-# haoyou_selenium.py
-# 使用 Selenium 抓取好游快爆网站内容
+# scripts/haoyou_selenium.py
+# 基于 taptap_selenium.py 创建，用于抓取好游快爆的游戏信息
 
-# 导入必要的库
 import os
 import time
+import random
 import json
 from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.edge.service import Service as EdgeService
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 # 保存结果的文件夹
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
-def setup_driver():
-    """
-    配置并初始化 Chrome 浏览器
-    """
-    # 设置 Chrome 浏览器选项
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # 无界面模式
-    chrome_options.add_argument("--disable-gpu")  # 禁用 GPU 加速
-    chrome_options.add_argument("--window-size=1920,1080")  # 设置窗口大小
-    chrome_options.add_argument("--no-sandbox")  # 禁用沙盒模式
-    chrome_options.add_argument("--disable-dev-shm-usage")  # 禁用 /dev/shm 使用
-    
-    # 添加用户代理，模拟真实浏览器
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36")
-    
-    # 初始化 Chrome 浏览器
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    return driver
+# 好游快爆基础URL
+BASE_URL = "https://www.3839.com"
+CALENDAR_BASE_URL = "https://www.3839.com/hao/yxzt/kaice"
 
-def get_haoyou_games(url):
+def random_delay(min_sec=0.5, max_sec=1.5):
+    """避免爬取过快"""
+    time.sleep(random.uniform(min_sec, max_sec))
+
+def setup_driver(headless=True):
     """
-    获取好游快爆网站的游戏信息
-    
-    参数:
-        url (str): 好游快爆网站的 URL
-        
-    返回:
-        list: 包含游戏信息的字典列表
+    配置并初始化 Edge 浏览器
     """
-    print(f"正在访问好游快爆网站: {url}")
-    
-    # 初始化 Chrome 浏览器
-    driver = setup_driver()
+    options = webdriver.EdgeOptions()
+    if headless:
+        options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36")
     
     try:
-        # 访问目标网页
-        driver.get(url)
-        print("页面加载中...")
-        
-        # 等待页面加载完成
-        try:
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".page404-game, .sugar-games, .today-games"))
-            )
-        except Exception as e:
-            print(f"等待页面元素出现超时: {e}")
-            # 继续执行，即使超时也尝试解析页面
-        
-        # 适当等待，确保动态内容加载完成
-        time.sleep(5)
-        
-        # 获取页面源代码
-        page_source = driver.page_source
-        
-        # 将页面源代码保存到文件，方便调试
-        with open(os.path.join(DATA_DIR, 'haoyou_page.html'), 'w', encoding='utf-8') as f:
-            f.write(page_source)
-        print(f"页面源代码已保存到 {os.path.join(DATA_DIR, 'haoyou_page.html')}")
-        
-        # 使用 BeautifulSoup 解析页面
-        soup = BeautifulSoup(page_source, 'lxml')
-        
-        # 尝试多种可能的容器选择器
-        game_container = (
-            soup.select_one(".page404-game .area-bd") or  # 404 页面中的游戏列表
-            soup.select_one(".sugar-games .game-list") or  # 排行榜页面
-            soup.select_one(".today-list")  # 新游发布页面
-        )
-        
-        if not game_container:
-            print("未找到游戏容器，可能页面结构不同于预期")
-            return []
-        
-        # 根据容器类型选择正确的游戏项选择器
-        game_items = []
-        if "page404-game" in str(game_container):
-            # 404 页面中的游戏列表
-            game_items = game_container.select("li")
-        elif "sugar-games" in str(game_container):
-            # 排行榜页面
-            game_items = game_container.select(".game-item")
-        else:
-            # 可能是其他类型的页面，尝试通用选择器
-            game_items = game_container.select("li") or game_container.select(".game-item")
-        
-        if not game_items:
-            print("未找到游戏项，可能页面结构不同于预期")
-            return []
-        
-        print(f"找到 {len(game_items)} 个游戏项")
-        
-        # 解析每个游戏的信息
-        games_data = []
-        for item in game_items:
-            try:
-                # 游戏名称 (尝试多种可能的选择器)
-                name_elem = (
-                    item.select_one(".g-name") or 
-                    item.select_one(".game-name") or 
-                    item.select_one(".title") or 
-                    item.select_one("h3")
-                )
-                name = name_elem.text.strip() if name_elem else "未知名称"
-                
-                # 游戏链接
-                link_elem = item.select_one("a")
-                link = link_elem.get("href") if link_elem else ""
-                if link and not link.startswith("http"):
-                    link = f"https://www.3839.com{link}"
-                
-                # 游戏状态 (从分数或下载量推断)
-                status = "已上线"  # 默认状态
-                
-                # 游戏评分
-                rating_elem = (
-                    item.select_one(".score") or
-                    item.select_one(".gameScore .score")
-                )
-                rating = rating_elem.text.strip() if rating_elem else "暂无评分"
-                
-                # 游戏分类/下载量
-                category_elem = (
-                    item.select_one(".g-info") or
-                    item.select_one(".game-type") or
-                    item.select_one(".category")
-                )
-                category = category_elem.text.strip() if category_elem else "未知分类"
-                
-                # 游戏图标
-                icon_elem = item.select_one("img.g-icon") or item.select_one("img")
-                icon_url = icon_elem.get("src") or icon_elem.get("data-src") if icon_elem else ""
-                
-                # 组装游戏数据
-                game_data = {
-                    "name": name,
-                    "link": link,
-                    "status": status,
-                    "rating": rating,
-                    "category": category,
-                    "icon_url": icon_url,
-                    "source": "好游快爆",
-                    "date": datetime.now().strftime("%Y-%m-%d")
-                }
-                
-                games_data.append(game_data)
-                print(f"已提取游戏信息: {name}")
-                
-            except Exception as e:
-                print(f"解析游戏信息时出错: {e}")
-                continue
-        
-        return games_data
-        
+        service = EdgeService(EdgeChromiumDriverManager().install())
+        driver = webdriver.Edge(service=service, options=options)
+        print("Edge WebDriver 初始化成功。")
+        return driver
     except Exception as e:
-        print(f"访问页面或提取数据时出错: {e}")
-        return []
+        print(f"初始化 Edge WebDriver 时出错: {e}")
+        return None
+
+def load_existing_links(filepath):
+    """从 JSONL 文件加载已存在的游戏链接"""
+    existing_links = set()
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        data = json.loads(line.strip())
+                        if 'link' in data and data['link']:
+                            existing_links.add(data['link'])
+                    except json.JSONDecodeError:
+                        print(f"警告: 无法解析行: {line.strip()}")
+            print(f"从 {filepath} 加载了 {len(existing_links)} 个已存在的游戏链接。")
+        except Exception as e:
+            print(f"读取已存在链接文件时出错 ({filepath}): {e}")
+    return existing_links
+
+def get_haoyou_games():
+    """
+    获取好游快爆开测表的游戏信息，支持增量保存
+    """
+    # 构建输出文件名（基于运行日期）
+    current_date = datetime.now().strftime("%Y%m%d")
+    output_filename = f'haoyou_games_{current_date}.jsonl'
+    output_path = os.path.join(DATA_DIR, output_filename)
+    
+    print(f"开始抓取好游快爆开测表游戏信息 (增量模式)...")
+    
+    # 加载已存在的链接
+    existing_links = load_existing_links(output_path)
+    
+    driver = setup_driver(headless=True)
+    if not driver:
+        return 0 # 返回新增数量 0
+
+    url = CALENDAR_BASE_URL  # 开测表页面URL
+    newly_scraped_count = 0
+    processed_count = 0
+
+    try:
+        driver.get(url)
+        print(f"已访问: {url}")
+
+        # 等待主要内容加载完成
+        try:
+            # 下面的选择器需要根据好游快爆网站的实际结构调整
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.open-test-list"))  # 假设的选择器
+            )
+            print("页面主要内容加载完成。")
+        except TimeoutException:
+            print("等待页面主要内容超时或未找到元素。")
+        except Exception as e:
+            print(f"等待页面元素时发生错误: {e}")
+            driver.quit()
+            return 0
+
+        # 查找所有游戏条目
+        # 以下选择器需要根据好游快爆网站实际结构调整
+        game_elements = driver.find_elements(By.CSS_SELECTOR, "div.game-item")  # 假设的选择器
+
+        if not game_elements:
+            print("未找到游戏条目。")
+            driver.quit()
+            return 0
+
+        print(f"找到 {len(game_elements)} 个潜在的游戏条目。开始处理...")
+
+        original_window = driver.current_window_handle
         
+        # 打开文件准备追加
+        with open(output_path, 'a', encoding='utf-8') as outfile:
+            for index, g_element in enumerate(game_elements):
+                processed_count += 1
+                print(f"\n-- 检查第 {index + 1}/{len(game_elements)} 个条目 --")
+                
+                # 定义要抓取的字段
+                name, status, publisher, category = "未知名称", "未知状态", "未知厂商", "未知类型"
+                platform, description, icon_url, link = "未知平台", "", "", ""
+                date = current_date  # 使用当前日期作为日期字段
+
+                # 提前提取链接并检查是否已存在
+                try:
+                    # 根据好游快爆网站结构调整以下选择器
+                    link_element = g_element.find_element(By.CSS_SELECTOR, "a.game-link")  # 假设的选择器
+                    href = link_element.get_attribute("href")
+                    if href:
+                        link = href
+                        if link in existing_links:
+                            print(f"链接 {link} 已存在于 {output_filename}，跳过。")
+                            continue
+                        else:
+                            print(f"新链接: {link}，准备处理...")
+                    else:
+                        print("警告: 未能从此条目提取链接，跳过处理。")
+                        continue
+                except Exception as e:
+                    print(f"提取或检查链接时出错: {e}，跳过此条目。")
+                    continue
+
+                # 标记此游戏的数据是否完整获取成功
+                scrape_successful = False
+                game_data = {}
+
+                try:
+                    # 从列表页提取基本信息
+                    try:
+                        # 名称 - 根据实际网站结构调整选择器
+                        name_element = g_element.find_element(By.CSS_SELECTOR, "div.game-name")  # 假设的选择器
+                        name = name_element.text.strip()
+                        print(f"  名称: {name}")
+                    except Exception as e:
+                        print(f"  提取名称时出错: {e}")
+
+                    try:
+                        # 状态 - 根据实际网站结构调整选择器
+                        status_element = g_element.find_element(By.CSS_SELECTOR, "div.game-status")  # 假设的选择器
+                        status = status_element.text.strip()
+                        print(f"  状态: {status}")
+                    except Exception as e:
+                        print(f"  提取状态时出错: {e}")
+
+                    try:
+                        # 游戏图标 - 根据实际网站结构调整选择器
+                        icon_element = g_element.find_element(By.CSS_SELECTOR, "img.game-icon")  # 假设的选择器
+                        icon_url = icon_element.get_attribute("src")
+                        print(f"  图标URL: {icon_url}")
+                    except Exception as e:
+                        print(f"  提取图标URL时出错: {e}")
+
+                    # 访问详情页获取更多信息
+                    print(f"  访问详情页: {link}")
+                    driver.execute_script("window.open(arguments[0]);", link)
+                    WebDriverWait(driver, 10).until(EC.number_of_windows_to_be(2))
+                    detail_window = [window for window in driver.window_handles if window != original_window][0]
+                    driver.switch_to.window(detail_window)
+                    print(f"  已切换到详情页窗口: {driver.current_url}")
+                    random_delay(1, 2)
+
+                    # 在详情页提取更多信息
+                    try:
+                        # 等待详情页加载
+                        # 根据好游快爆网站结构调整选择器
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.game-detail"))  # 假设的选择器
+                        )
+
+                        # 提取厂商信息
+                        try:
+                            # 根据实际网站结构调整选择器
+                            publisher_element = driver.find_element(By.CSS_SELECTOR, "div.game-publisher")  # 假设的选择器
+                            publisher = publisher_element.text.strip()
+                            print(f"  厂商: {publisher}")
+                        except Exception as e:
+                            print(f"  提取厂商信息时出错: {e}")
+
+                        # 提取平台信息
+                        try:
+                            # 根据实际网站结构调整选择器
+                            platform_element = driver.find_element(By.CSS_SELECTOR, "div.game-platform")  # 假设的选择器
+                            platform = platform_element.text.strip()
+                            print(f"  平台: {platform}")
+                        except Exception as e:
+                            print(f"  提取平台信息时出错: {e}")
+
+                        # 提取类别信息
+                        try:
+                            # 根据实际网站结构调整选择器
+                            category_elements = driver.find_elements(By.CSS_SELECTOR, "div.game-category span")  # 假设的选择器
+                            if category_elements:
+                                category = "/".join([cat.text.strip() for cat in category_elements])
+                            print(f"  类别: {category}")
+                        except Exception as e:
+                            print(f"  提取类别信息时出错: {e}")
+
+                        # 提取游戏描述
+                        try:
+                            # 根据实际网站结构调整选择器
+                            description_element = driver.find_element(By.CSS_SELECTOR, "div.game-description")  # 假设的选择器
+                            description = description_element.text.strip()
+                            print(f"  描述: {description[:50]}..." if len(description) > 50 else f"  描述: {description}")
+                        except Exception as e:
+                            print(f"  提取游戏描述时出错: {e}")
+
+                    except Exception as e:
+                        print(f"  在详情页提取信息时出错: {e}")
+
+                    # 提取游戏开测日期（如果列表页没有）
+                    try:
+                        # 根据实际网站结构调整选择器
+                        date_element = driver.find_element(By.CSS_SELECTOR, "div.test-date")  # 假设的选择器
+                        test_date = date_element.text.strip()
+                        if test_date:
+                            date = test_date
+                        print(f"  开测日期: {date}")
+                    except Exception as e:
+                        print(f"  提取开测日期时出错: {e}")
+
+                    # 关闭详情页窗口并切回原始窗口
+                    driver.close()
+                    driver.switch_to.window(original_window)
+                    WebDriverWait(driver, 5).until(EC.number_of_windows_to_be(1))
+                    print("  已切回原始窗口。")
+
+                    # 标记成功，准备写入
+                    scrape_successful = True
+
+                except Exception as e:
+                    print(f"处理游戏 {name} ({link}) 时发生严重错误: {e}")
+                    # 尝试恢复窗口状态
+                    try:
+                        for handle in driver.window_handles:
+                            if handle != original_window:
+                                driver.switch_to.window(handle)
+                                driver.close()
+                        driver.switch_to.window(original_window)
+                    except Exception as recovery_e:
+                        print(f"  尝试恢复窗口时出错: {recovery_e}")
+                    scrape_successful = False
+
+                # 如果成功，立即写入文件
+                if scrape_successful:
+                    game_data = {
+                        "name": name,
+                        "platform": platform,
+                        "status": status,
+                        "publisher": publisher,
+                        "category": category,
+                        "description": description,
+                        "link": link,
+                        "icon_url": icon_url,
+                        "date": date,
+                        "source": "好游快爆"
+                    }
+                    try:
+                        json.dump(game_data, outfile, ensure_ascii=False)
+                        outfile.write('\n')
+                        newly_scraped_count += 1
+                        # 将链接添加到内存中的集合，避免同一批次内有重复条目
+                        existing_links.add(link)
+                        print(f"成功处理并保存游戏 {name} 到 {output_filename}")
+                    except Exception as write_e:
+                        print(f"写入游戏 {name} 数据到文件时出错: {write_e}")
+                else:
+                    print(f"处理游戏 {name} ({link}) 未成功，未写入文件。")
+
+            # 循环结束
+            print("\n所有列表条目处理完毕。")
+
+    except Exception as e:
+        print(f"抓取过程中发生未预料的错误: {e}")
     finally:
-        # 关闭浏览器
-        driver.quit()
-        print("浏览器已关闭")
+        if driver:
+            driver.quit()
+            print("浏览器已关闭。")
 
-def save_to_json(data, filename):
-    """
-    将数据保存为 JSON 文件
+    print(f"\n好游快爆抓取完成。")
+    print(f"总共检查 {processed_count} 个列表条目。")
+    print(f"本次运行新增 {newly_scraped_count} 条游戏数据到 {output_filename}。")
     
-    参数:
-        data: 要保存的数据
-        filename (str): 文件名
-    """
-    file_path = os.path.join(DATA_DIR, filename)
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"数据已保存到 {file_path}")
+    return newly_scraped_count
 
+# --- 主程序入口 (用于测试) --- #
 if __name__ == "__main__":
-    # 好游快爆游戏页面 URL，更新为排行榜页面
-    url = "https://www.3839.com/top/hot.html"
-    
-    # 获取游戏数据
-    games = get_haoyou_games(url)
-    
-    # 检查是否成功获取数据
-    if games:
-        print(f"成功获取 {len(games)} 个游戏的信息")
-        
-        # 保存为 JSON 文件
-        save_to_json(games, "haoyou_games.json")
-    else:
-        print("未获取到游戏数据") 
+    print("\n === 开始测试好游快爆开测表抓取 === \n")
+    new_games_count = get_haoyou_games()
+    print("\n === 测试完成 === ")
+    print(f"本次运行新增 {new_games_count} 条数据。")
+    current_date = datetime.now().strftime("%Y%m%d")
+    print(f"完整数据保存在 data/haoyou_games_{current_date}.jsonl 文件中。") 

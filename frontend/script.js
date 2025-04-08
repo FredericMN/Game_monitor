@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusFilter = document.getElementById('status-filter');
     const sourceFilter = document.getElementById('source-filter');
     const filterButton = document.getElementById('filter-button');
+    const featuredColumnHead = document.getElementById('featured-column-head');
+    const topGamesSection = document.getElementById('top-games-section');
+    const gamesTableTitle = document.getElementById('games-table-title');
 
     const API_BASE_URL = 'http://localhost:5000/api'; // 后端 API 地址
 
@@ -18,6 +21,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const perPage = 15; // 每页显示数量，可以根据需要调整
 
     let allGamesData = []; // 变量用于存储从后端获取的所有游戏数据
+    let userFeaturedGames = loadUserFeaturedGames(); // 存储用户自选的重点关注游戏
+    let currentSection = 'all'; // 当前激活的页签，默认为全部游戏
+
+    // --- 用户重点关注游戏存储功能 ---
+    function loadUserFeaturedGames() {
+        const saved = localStorage.getItem('userFeaturedGames');
+        return saved ? JSON.parse(saved) : [];
+    }
+
+    function saveUserFeaturedGames() {
+        localStorage.setItem('userFeaturedGames', JSON.stringify(userFeaturedGames));
+    }
+
+    function toggleFeaturedGame(gameId, featured) {
+        if (featured && !userFeaturedGames.includes(gameId)) {
+            userFeaturedGames.push(gameId);
+        } else if (!featured) {
+            userFeaturedGames = userFeaturedGames.filter(id => id !== gameId);
+        }
+        saveUserFeaturedGames();
+        
+        // 如果在首页，则需要刷新重点游戏区域
+        if (currentSection === 'all') {
+            loadFeaturedGames();
+        }
+    }
 
     // --- 数据获取函数 ---
     async function fetchData(endpoint, params = {}) {
@@ -49,8 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
             featuredGameList.innerHTML = '<p>暂无重点关注游戏。</p>';
             return;
         }
-        // 最多显示 8 个
-        games.slice(0, 8).forEach(game => {
+        // 最多显示 16 个
+        games.slice(0, 16).forEach(game => {
             const card = document.createElement('div');
             card.className = 'game-card featured-card';
 
@@ -68,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p><span class="label">状态/计划:</span> <span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></p>
                 <p><span class="label">厂商:</span> ${game.publisher || '未知厂商'}</p>
                 <p><span class="label">更新日期:</span> ${game.date || '未知'}</p>
-                <p><span class="label">平台:</span> ${game.platform || '未知'}</p>
                 <p><span class="label">简介:</span> ${truncateText(game.description, 40) || '无'}</p>
                 ${game.link ? `<a href="${game.link}" target="_blank" class="game-link">查看详情</a>` : ''}
             `;
@@ -79,13 +107,22 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAllGames(data) {
         allGamesTbody.innerHTML = ''; // 清空加载提示或旧数据
         if (!data || !data.games || data.games.length === 0) {
-            allGamesTbody.innerHTML = '<tr><td colspan="8">未找到符合条件的游戏。</td></tr>'; // Adjusted colspan
+            const colspan = currentSection === 'featured' ? 7 : 6;
+            allGamesTbody.innerHTML = `<tr><td colspan="${colspan}">未找到符合条件的游戏。</td></tr>`;
             updatePaginationControls(0, 1, 1);
             return;
         }
 
+        // 检查是否在"热门关注"页签下
+        if (currentSection === 'featured') {
+            featuredColumnHead.style.display = 'table-cell'; // 显示"重点关注"列表头
+        } else {
+            featuredColumnHead.style.display = 'none'; // 隐藏"重点关注"列表头
+        }
+
         data.games.forEach(game => {
             const row = document.createElement('tr');
+            const gameId = game.id || `${game.name}-${game.publisher}`; // 使用ID或生成唯一标识
             
             // Date cell (first column)
             const dateCell = `<td>${game.date || '未知'}</td>`;
@@ -105,21 +142,37 @@ document.addEventListener('DOMContentLoaded', () => {
             // Status cell
             const statusCell = `<td><span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></td>`;
 
-            // Publisher cell (New)
+            // Publisher cell
             const publisherCell = `<td>${game.publisher || '未知厂商'}</td>`;
 
-            // Platform cell
-            const platformCell = `<td>${game.platform || '未知'}</td>`;
-
-            // Source cell
-            const sourceCell = `<td>${game.source || '未知'}</td>`;
-
-            // Description cell (Last)
+            // Description cell
             const descriptionCell = `<td>${truncateText(game.description, 60) || '无'}</td>`;
             
-            // Assemble row HTML in the new order
-            row.innerHTML = dateCell + iconCell + nameCell + statusCell + publisherCell + platformCell + sourceCell + descriptionCell;
+            // Featured toggle cell (Only visible in featured tab)
+            const isFeatured = userFeaturedGames.includes(gameId);
+            const featuredCell = `
+                <td class="featured-toggle-cell" ${currentSection !== 'featured' ? 'style="display:none;"' : ''}>
+                    <label class="toggle-switch">
+                        <input type="checkbox" class="featured-toggle" data-game-id="${gameId}" ${isFeatured ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </td>
+            `;
+            
+            // Assemble row HTML
+            row.innerHTML = dateCell + iconCell + nameCell + statusCell + publisherCell + descriptionCell + featuredCell;
             allGamesTbody.appendChild(row);
+            
+            // 添加开关事件监听器
+            if (currentSection === 'featured') {
+                const toggleInput = row.querySelector('.featured-toggle');
+                if (toggleInput) {
+                    toggleInput.addEventListener('change', (e) => {
+                        const gameId = e.target.getAttribute('data-game-id');
+                        toggleFeaturedGame(gameId, e.target.checked);
+                    });
+                }
+            }
         });
 
         // 更新分页
@@ -192,9 +245,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- 更新UI以反映当前选择的页签 ---
+    function updateUIForSection(section) {
+        currentSection = section;
+
+        if (section === 'featured') {
+            // 热门关注页签
+            topGamesSection.style.display = 'none'; // 隐藏重点关注模块
+            gamesTableTitle.textContent = '热门关注游戏列表';
+            featuredColumnHead.style.display = 'table-cell'; // 显示重点关注列
+        } else {
+            // 全部游戏页签
+            topGamesSection.style.display = 'block'; // 显示重点关注模块
+            gamesTableTitle.textContent = '全部游戏列表';
+            featuredColumnHead.style.display = 'none'; // 隐藏重点关注列
+        }
+    }
+
     // --- 加载全部游戏数据（带过滤和分页）---
     async function loadAllGames() {
-        allGamesTbody.innerHTML = '<tr><td colspan="8" class="loading-message">正在加载游戏列表...</td></tr>'; // Adjusted colspan
+        const colspan = currentSection === 'featured' ? 7 : 6;
+        allGamesTbody.innerHTML = `<tr><td colspan="${colspan}" class="loading-message">正在加载游戏列表...</td></tr>`;
         prevPageButton.disabled = true;
         nextPageButton.disabled = true;
 
@@ -205,6 +276,12 @@ document.addEventListener('DOMContentLoaded', () => {
             status: statusFilter.value,
             source: sourceFilter.value,
         };
+
+        // 根据当前页签添加特定筛选条件
+        if (currentSection === 'featured') {
+            // 热门关注页签 - 筛选评分不为0的项目
+            params.min_score = "0.1"; // 确保评分大于0
+        }
 
         const data = await fetchData('/games', params);
         if (data) {
@@ -229,80 +306,111 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- 加载重点游戏数据 ---
     async function loadFeaturedGames() {
-         featuredGameList.innerHTML = '<p class="loading-message">正在加载重点游戏...</p>'; // 显示加载提示
-        // 注意：后端的 /api/featured-games 路由目前不直接支持分页和过滤，它返回所有符合条件的
-        // 如果需要分页，需要调整后端或在前端对返回结果进行处理
-        const data = await fetchData('/featured-games'); // 直接调用不带参数的接口
-        // 后端返回的是一个列表，而不是带 pagination 的结构
-        renderFeaturedGames(data);
+        featuredGameList.innerHTML = '<p class="loading-message">正在加载重点游戏...</p>'; // 显示加载提示
+        
+        // 优先使用用户自选的重点游戏
+        if (userFeaturedGames.length > 0) {
+            // 获取所有游戏数据
+            const allGames = await fetchData('/games', { per_page: 1000 });
+            if (allGames && allGames.games) {
+                // 筛选出用户标记的重点游戏
+                const featuredGames = allGames.games.filter(game => {
+                    const gameId = game.id || `${game.name}-${game.publisher}`;
+                    return userFeaturedGames.includes(gameId);
+                });
+                
+                if (featuredGames.length > 0) {
+                    renderFeaturedGames(featuredGames);
+                    return;
+                }
+            }
+        }
+        
+        // 如果没有用户自选游戏或者获取失败，回退到厂商筛选逻辑
+        const allGames = await fetchData('/games', { per_page: 100 });
+        
+        if (!allGames || !allGames.games || allGames.games.length === 0) {
+            featuredGameList.innerHTML = '<p>未能获取游戏数据。</p>';
+            return;
+        }
+        
+        // 筛选重点游戏（根据厂商名称）
+        const featuredGames = allGames.games.filter(game => {
+            if (!game.publisher) return false;
+            
+            const publisher = game.publisher.toLowerCase();
+            return publisher.includes('腾讯') || 
+                   publisher.includes('tencent') || 
+                   publisher.includes('网易') || 
+                   publisher.includes('netease') || 
+                   publisher.includes('米哈游') || 
+                   publisher.includes('mihoyo') ||
+                   publisher.includes('hoyoverse');
+        });
+        
+        // 如果筛选后没有结果，尝试使用后端的 featured-games 接口
+        if (featuredGames.length === 0) {
+            const backendFeatured = await fetchData('/featured-games');
+            renderFeaturedGames(backendFeatured);
+        } else {
+            renderFeaturedGames(featuredGames);
+        }
     }
 
-    // --- 事件监听器 ---
-    filterButton.addEventListener('click', () => {
-        currentPage = 1; // 筛选时重置到第一页
-        loadAllGames();
-    });
-
-    // 搜索框回车触发筛选
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            currentPage = 1;
+    // --- 事件监听器设置 ---
+    function setupEventListeners() {
+        // 筛选按钮点击
+        filterButton.addEventListener('click', () => {
+            currentPage = 1; // 筛选时重置到第一页
             loadAllGames();
-        }
-    });
+        });
 
-    prevPageButton.addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage--;
-            loadAllGames();
-        }
-    });
-
-    nextPageButton.addEventListener('click', () => {
-        if (currentPage < totalPages) {
-            currentPage++;
-            loadAllGames();
-        }
-    });
-
-    // 导航切换（示例，简单实现）
-    // 你可以根据需要扩展这个逻辑，例如真正地隐藏/显示不同区域
-    document.querySelectorAll('.navbar a').forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            document.querySelector('.navbar a.active').classList.remove('active');
-            e.target.classList.add('active');
-            
-            const section = e.target.getAttribute('data-section');
-            if (section === 'featured') {
-                 // 如果想在点击"热门关注"时只看重点列表，可以在此调整
-                 console.log("切换到热门关注视图 (功能待实现)");
-                 // 可以隐藏 all-games-table，或者重新加载 featured 数据到 all-games-table (需要后端支持或前端过滤)
-                 // 为了简单起见，这里仅作演示，实际还是加载所有数据
-                 // 若要实现仅显示 featured, 可以调用 loadFeaturedGames 并渲染到 all-games-table
-                 // 或者修改 loadAllGames 的参数，添加 featured=true
-                 const params = {
-                     page: 1,
-                     per_page: perPage,
-                     featured: true // 假设后端 /api/games 支持 featured 参数
-                 };
-                 currentPage = 1;
-                 fetchData('/games', params).then(renderAllGames);
-            } else if (section === 'all') {
-                console.log("切换到全部游戏视图");
+        // 搜索框回车触发筛选
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
                 currentPage = 1;
-                loadAllGames(); // 重新加载全部游戏的第一页
+                loadAllGames();
             }
         });
-    });
 
-    // --- 初始加载 ---
+        // 分页控件
+        prevPageButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadAllGames();
+            }
+        });
+
+        nextPageButton.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadAllGames();
+            }
+        });
+
+        // 导航切换
+        document.querySelectorAll('.navbar a').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelector('.navbar a.active').classList.remove('active');
+                e.target.classList.add('active');
+                
+                const section = e.target.getAttribute('data-section');
+                updateUIForSection(section);
+                currentPage = 1;
+                loadAllGames();
+            });
+        });
+    }
+
+    // --- 初始化和启动 ---
     async function initialLoad() {
+        updateUIForSection('all'); // 设置初始UI状态
+        setupEventListeners(); // 设置所有事件监听器
         loadFeaturedGames(); // 加载重点游戏
         await fetchAllGamesForStatus(); // 先获取所有游戏数据并填充状态过滤器
         loadAllGames();      // 然后加载第一页的全部游戏
     }
 
     initialLoad(); // 执行初始加载
-
 }); 

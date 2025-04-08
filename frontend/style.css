@@ -303,12 +303,80 @@ body {
 }
 
 /* 表格内简介列样式 */
-.styled-table td:last-child { /* 假设简介是最后一列 */
-    text-align: left; /* Keep description left-aligned */
-    font-size: 0.85em;
+.styled-table .description-column {
+    text-align: left; /* 简介列标题左对齐 */
+}
+
+.styled-table td {
+    padding: 10px 12px;
+    text-align: center; /* 所有表格单元格居中 */
+    vertical-align: middle;
+}
+
+/* 简介列特殊样式 */
+.styled-table td:nth-last-child(2) { /* 简介列 (倒数第二列，因为最后一列可能是重点关注) */
+    text-align: left; /* 简介内容左对齐 */
+    font-size: 0.8em; /* 更小的字体 */
     color: #666;
     max-width: 250px; /* 限制最大宽度 */
     white-space: normal; /* 允许换行 */
+}
+
+/* 日期列不换行 */
+.styled-table td:first-child {
+    white-space: nowrap; /* 日期列不换行 */
+    font-size: 0.9em; /* 稍微小一点的字体 */
+}
+
+/* iOS风格开关样式 */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 28px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 24px;
+    width: 24px;
+    left: 3px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+input:checked + .toggle-slider {
+    background-color: #4CD964; /* iOS绿色 */
+}
+
+input:focus + .toggle-slider {
+    box-shadow: 0 0 1px #4CD964;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(21px);
 }
 
 /* 加载提示信息样式 */
