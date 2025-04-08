@@ -11,9 +11,9 @@
     <nav class="navbar">
         <div class="logo">游戏导航</div>
         <ul>
-            <li><a href="#" class="active">全部游戏</a></li>
-            <li><a href="#">即将推出</a></li>
-            <li><a href="#">热门关注</a></li>
+            <li><a href="#" class="active" data-section="all">全部游戏</a></li>
+            <!-- <li><a href="#">即将推出</a></li> -->
+            <li><a href="#" data-section="featured">热门关注</a></li>
             <!-- 可以添加更多导航链接 -->
         </ul>
     </nav>
@@ -22,93 +22,58 @@
         <!-- 重点关注区域 -->
         <div class="top-games">
             <h2 class="section-title">重点关注</h2>
-            <div class="game-list">
-                <!-- 这里最多放 8 个卡片，现在是示例 -->
-                <!-- 示例游戏卡片 1 -->
-                <div class="game-card">
-                    <h3>游戏 A</h3>
-                    <p><span class="label">状态/计划:</span> <span class="status-tag status-online">已上线</span></p>
-                    <p><span class="label">预计时间:</span> 2024-01-15</p>
-                    <p><span class="label">平台:</span> PC, PS5</p>
-                    <p><span class="label">简介:</span> 这是一款角色扮演游戏...</p>
-                </div>
-
-                <!-- 示例游戏卡片 2 -->
-                <div class="game-card">
-                    <h3>游戏 B</h3>
-                    <p><span class="label">状态/计划:</span> <span class="status-tag status-testing">首次测试</span></p>
-                    <p><span class="label">预计时间:</span> 2024-08-01</p>
-                    <p><span class="label">平台:</span> PC</p>
-                    <p><span class="label">简介:</span> 多人在线竞技游戏...</p>
-                </div>
-
-                <!-- 示例游戏卡片 3 -->
-                <div class="game-card">
-                    <h3>新项目 C</h3>
-                    <p><span class="label">状态/计划:</span> <span class="status-tag status-dev">开发中</span></p>
-                    <p><span class="label">预计时间:</span> 预计 2025 Q1</p>
-                    <p><span class="label">平台:</span> PC, Xbox</p>
-                    <p><span class="label">简介:</span> 开放世界冒险...</p>
-                </div>
-
-                <!-- 示例游戏卡片 4 -->
-                <div class="game-card">
-                    <h3>移动端 D</h3>
-                    <p><span class="label">状态/计划:</span> <span class="status-tag status-preorder">预约中</span></p>
-                    <p><span class="label">预计时间:</span> 2024-09-10</p>
-                    <p><span class="label">平台:</span> iOS, Android</p>
-                    <p><span class="label">简介:</span> 休闲益智类...</p>
-                </div>
-                 <!-- 未来可以用 JavaScript 动态添加更多卡片, 并限制最多 8 个 -->
+            <div class="game-list" id="featured-game-list">
+                <!-- 重点游戏卡片将由 JS 动态填充 -->
+                <p class="loading-message">正在加载重点游戏...</p>
             </div>
         </div>
 
         <!-- 全部游戏列表区域 -->
         <div class="all-games-table">
             <h2 class="section-title">全部游戏列表</h2>
+             <!-- 搜索和过滤栏 -->
+            <div class="filter-bar">
+                <input type="text" id="search-input" placeholder="搜索游戏名称或分类...">
+                <select id="status-filter">
+                    <option value="">所有状态</option>
+                    <!-- 状态选项可以动态添加或预定义 -->
+                    <option value="测试中">测试中</option>
+                    <option value="可预约">可预约</option>
+                    <option value="已上线">已上线</option>
+                    <option value="开发中">开发中</option>
+                </select>
+                <select id="source-filter">
+                    <option value="">所有来源</option>
+                    <option value="TapTap">TapTap</option>
+                    <!-- 可以添加其他来源 -->
+                </select>
+                <button id="filter-button">筛选</button>
+            </div>
             <table class="styled-table">
                 <thead>
                     <tr>
                         <th>游戏名称</th>
                         <th>状态/计划</th>
-                        <th>预计时间</th>
+                        <th>更新日期/预计时间</th> <!-- 调整表头 -->
                         <th>平台</th>
+                        <th>来源</th>
                         <th>简介</th>
+                        <th>评分</th>
+                        <th>图标</th>
+                        <th>链接</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <!-- 这里是示例数据，将来会由后端动态填充 -->
-                     <tr>
-                        <td>游戏 A</td>
-                        <td><span class="status-tag status-online">已上线</span></td>
-                        <td>2024-01-15</td>
-                        <td>PC, PS5</td>
-                        <td>这是一款角色扮演游戏...</td>
-                    </tr>
-                    <tr>
-                        <td>游戏 B</td>
-                        <td><span class="status-tag status-testing">首次测试</span></td>
-                        <td>2024-08-01</td>
-                        <td>PC</td>
-                        <td>多人在线竞技游戏...</td>
-                    </tr>
-                    <tr>
-                        <td>新项目 C</td>
-                        <td><span class="status-tag status-dev">开发中</span></td>
-                        <td>预计 2025 Q1</td>
-                        <td>PC, Xbox</td>
-                        <td>开放世界冒险...</td>
-                    </tr>
-                    <tr>
-                        <td>移动端 D</td>
-                        <td><span class="status-tag status-preorder">预约中</span></td>
-                        <td>2024-09-10</td>
-                        <td>iOS, Android</td>
-                        <td>休闲益智类...</td>
-                    </tr>
-                    <!-- 可以添加更多行 -->
+                <tbody id="all-games-tbody">
+                    <!-- 表格内容将由 JS 动态填充 -->
+                    <tr><td colspan="9" class="loading-message">正在加载游戏列表...</td></tr>
                 </tbody>
             </table>
+            <!-- 分页控件 -->
+            <div class="pagination" id="pagination-controls">
+                <button id="prev-page" disabled>&lt; 上一页</button>
+                <span id="page-info">页码 1 / 1</span>
+                <button id="next-page" disabled>下一页 &gt;</button>
+            </div>
         </div>
 
     </div>

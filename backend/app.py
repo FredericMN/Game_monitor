@@ -1,5 +1,6 @@
 import os
 import json
+import glob # 导入 glob 用于查找文件
 import pandas as pd
 import math # 导入 math 模块用于 isnan 判断
 from flask import Flask, jsonify, request # 导入 jsonify 和 request
@@ -10,8 +11,8 @@ from flask_cors import CORS # 导入 CORS
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 数据文件路径
 DATA_DIR = os.path.join(BASE_DIR, '..', 'data')
-JSON_FILE_PATH = os.path.join(DATA_DIR, 'all_games.json')
-EXCEL_FILE_PATH = os.path.join(DATA_DIR, 'sample_games.xlsx')
+# JSON_FILE_PATH = os.path.join(DATA_DIR, 'all_games.json') # 不再使用
+# EXCEL_FILE_PATH = os.path.join(DATA_DIR, 'sample_games.xlsx') # 不再使用
 
 # 创建 Flask 应用实例
 app = Flask(__name__)
@@ -24,43 +25,44 @@ CORS(app)
 # CORS(app, resources={r"/api/*": {"origins": ["http://localhost:8000", "http://127.0.0.1:8000"]}}) # 只允许特定来源
 
 
-# --- 数据加载函数 --- #
+# --- 数据加载函数 (修改后) --- #
 def load_game_data():
-    """加载游戏数据，优先使用 JSON 数据源，如果不存在则使用 Excel"""
-    try:
-        # 首先尝试从 JSON 文件加载数据（数据采集脚本生成的结果）
-        if os.path.exists(JSON_FILE_PATH):
-            print(f"从 JSON 文件加载数据: {JSON_FILE_PATH}")
-            with open(JSON_FILE_PATH, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            return data
-        
-        # 如果 JSON 文件不存在，回退到 Excel 文件
-        print(f"JSON 文件不存在，尝试从 Excel 加载数据: {EXCEL_FILE_PATH}")
-        # 读取 Excel 文件，指定 sheet_name
-        df = pd.read_excel(EXCEL_FILE_PATH, sheet_name='Sheet1')
-        # 将 NaN (Not a Number) 值替换为 None，以便 JSON 序列化
-        # 转换为字典列表，但 NaN 可能仍然存在
-        data = df.to_dict(orient='records')
-        # **显式处理 NaN 转换为 None**
-        cleaned_data = []
-        for row in data:
-            cleaned_row = {}
-            for key, value in row.items():
-                # 检查值是否为 float 类型的 NaN
-                if isinstance(value, float) and math.isnan(value):
-                    cleaned_row[key] = None
-                else:
-                    cleaned_row[key] = value
-            cleaned_data.append(cleaned_row)
-        return cleaned_data
-    except FileNotFoundError:
-        print(f"错误：无法找到数据文件")
-        return [] # 或者可以返回一个错误信息
-    except Exception as e:
-        print(f"读取或处理数据文件时出错: {e}")
-        return [] # 或者可以返回一个错误信息
+    """加载游戏数据，从 data/ 目录下所有 .jsonl 文件读取"""
+    all_games = []
+    jsonl_files = glob.glob(os.path.join(DATA_DIR, '*.jsonl')) # 查找所有 .jsonl 文件
 
+    if not jsonl_files:
+        print(f"警告: 在目录 {DATA_DIR} 中未找到任何 .jsonl 文件。")
+        return []
+
+    print(f"找到以下 .jsonl 文件: {jsonl_files}")
+
+    for filepath in jsonl_files:
+        print(f"正在从文件加载数据: {filepath}")
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f):
+                    line = line.strip()
+                    if not line: # 跳过空行
+                        continue
+                    try:
+                        game_data = json.loads(line)
+                        # 可以在这里添加一些数据清洗或验证逻辑，例如确保关键字段存在
+                        all_games.append(game_data)
+                    except json.JSONDecodeError as json_err:
+                        print(f"  警告: 解析文件 {filepath} 第 {line_num + 1} 行时出错: {json_err}")
+                        print(f"    问题行内容: {line[:100]}...") # 打印部分问题行内容
+        except FileNotFoundError:
+            print(f"错误：尝试读取文件时找不到 {filepath} (可能在查找后被删除？)")
+        except Exception as e:
+            print(f"读取或处理文件 {filepath} 时发生意外错误: {e}")
+
+    print(f"总共从 {len(jsonl_files)} 个文件加载了 {len(all_games)} 条游戏数据。")
+    # 可选：去重（如果不同文件可能有相同游戏，基于 link 或 name+publisher 等）
+    # unique_games = {game.get('link', '') or f"{game.get('name', '')}-{game.get('publisher', '')}": game for game in all_games}.values()
+    # print(f"去重后剩余 {len(unique_games)} 条数据。")
+    # return list(unique_games)
+    return all_games
 
 # --- 路由定义 --- #
 
@@ -91,7 +93,7 @@ def get_games():
         filtered_data = [
             game for game in filtered_data 
             if game.get('is_featured', False) or 
-               (game.get('status', '').lower() in ['测试中', '可预约'] and 'is_featured' not in game)
+               (game.get('status', '').lower() in ['测试中', '可预约', '测试招募', '新游预约'] and 'is_featured' not in game) # 调整判断逻辑以适应 TapTap 状态
         ]
     
     # 按状态过滤
@@ -147,11 +149,11 @@ def get_featured_games():
     """返回重点关注的游戏数据"""
     game_data = load_game_data()
     
-    # 筛选重点游戏
+    # 筛选重点游戏 (调整判断逻辑以适应 TapTap 状态)
     featured_games = [
         game for game in game_data 
         if game.get('is_featured', False) or 
-           (game.get('status', '').lower() in ['测试中', '可预约'] and 'is_featured' not in game)
+           (game.get('status', '').lower() in ['测试中', '可预约', '测试招募', '新游预约'] and 'is_featured' not in game)
     ]
     
     return jsonify(featured_games)
@@ -159,8 +161,8 @@ def get_featured_games():
 
 # --- 应用启动 --- #
 if __name__ == '__main__':
-    # 检查数据文件是否存在
-    if not os.path.exists(JSON_FILE_PATH) and not os.path.exists(EXCEL_FILE_PATH):
-        print(f"警告：未找到数据文件。API 可能返回空数据。")
+    # 检查数据目录是否存在
+    if not os.path.exists(DATA_DIR) or not glob.glob(os.path.join(DATA_DIR, '*.jsonl')):
+        print(f"警告：未找到数据目录或目录中没有 .jsonl 文件。API 可能返回空数据。")
 
     app.run(host='0.0.0.0', port=5000, debug=True) 
