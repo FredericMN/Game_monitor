@@ -367,12 +367,19 @@ def get_taptap_games_for_date(target_date_str):
 # --- 主程序入口 (用于测试) --- #
 if __name__ == "__main__":
     # 测试获取特定日期的数据
+    # 自定义多次
+    # for test_date in ["2025-04-07", "2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12","2025-04-13","2025-04-14"]:
+    #     print(f"\n === 开始测试 TapTap 增量抓取 ({test_date}) === \n")
+    #     new_games_count = get_taptap_games_for_date(test_date)
+    #     print(f"\n === 测试完成 ({test_date}) === ")
+    #     print(f"本次运行新增 {new_games_count} 条数据。")
+    #     print(f"完整数据（包括历史和新增）保存在 data/taptap_games_{test_date}.jsonl 文件中。") 
+
+    # 自定义单次
     test_date = datetime.now().strftime("%Y-%m-%d") # 默认测试当天
     # test_date = "2024-05-15" # 或者指定一个日期进行测试
-
     print(f"\n === 开始测试 TapTap 增量抓取 ({test_date}) === \n")
     new_games_count = get_taptap_games_for_date(test_date)
-    
     print(f"\n === 测试完成 ({test_date}) === ")
     print(f"本次运行新增 {new_games_count} 条数据。")
     print(f"完整数据（包括历史和新增）保存在 data/taptap_games_{test_date}.jsonl 文件中。") 
