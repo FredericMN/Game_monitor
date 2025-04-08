@@ -142,11 +142,17 @@ body {
     text-align: left;
 }
 
+.styled-table thead th {
+    text-align: center; /* Center header text */
+    padding: 12px 15px; /* Restore padding if needed */
+    background-color: #009879;
+    color: #ffffff;
+}
+
 .styled-table th,
 .styled-table td {
-    padding: 10px 12px; /* 调整单元格内边距 */
-    text-align: left;
-    vertical-align: middle; /* 单元格内容垂直居中 */
+    padding: 10px 12px;
+    vertical-align: middle;
 }
 
 .styled-table tbody tr {
@@ -298,6 +304,7 @@ body {
 
 /* 表格内简介列样式 */
 .styled-table td:last-child { /* 假设简介是最后一列 */
+    text-align: left; /* Keep description left-aligned */
     font-size: 0.85em;
     color: #666;
     max-width: 250px; /* 限制最大宽度 */
@@ -342,4 +349,9 @@ body {
 .pagination #page-info {
     font-weight: bold;
     color: #555;
+}
+
+/* Center table data, except for the last column (description) */
+.styled-table tbody td {
+    text-align: center; 
 } 

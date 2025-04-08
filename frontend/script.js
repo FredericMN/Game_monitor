@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 最多显示 8 个
         games.slice(0, 8).forEach(game => {
             const card = document.createElement('div');
-            card.className = 'game-card featured-card'; // 添加一个特定类名
+            card.className = 'game-card featured-card';
 
             let iconHtml = '';
             if (game.icon_url) {
@@ -66,10 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <h3>${game.name || '未知名称'}</h3>
                 </div>
                 <p><span class="label">状态/计划:</span> <span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></p>
+                <p><span class="label">厂商:</span> ${game.publisher || '未知厂商'}</p>
                 <p><span class="label">更新日期:</span> ${game.date || '未知'}</p>
                 <p><span class="label">平台:</span> ${game.platform || '未知'}</p>
-                <p><span class="label">来源:</span> ${game.source || '未知'}</p>
-                <p><span class="label">简介:</span> ${truncateText(game.description, 40) || '无'}</p> <!-- 缩短简介 -->
+                <p><span class="label">简介:</span> ${truncateText(game.description, 40) || '无'}</p>
                 ${game.link ? `<a href="${game.link}" target="_blank" class="game-link">查看详情</a>` : ''}
             `;
             featuredGameList.appendChild(card);
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAllGames(data) {
         allGamesTbody.innerHTML = ''; // 清空加载提示或旧数据
         if (!data || !data.games || data.games.length === 0) {
-            allGamesTbody.innerHTML = '<tr><td colspan="7">未找到符合条件的游戏。</td></tr>'; // Adjusted colspan
+            allGamesTbody.innerHTML = '<tr><td colspan="8">未找到符合条件的游戏。</td></tr>'; // Adjusted colspan
             updatePaginationControls(0, 1, 1);
             return;
         }
@@ -87,7 +87,10 @@ document.addEventListener('DOMContentLoaded', () => {
         data.games.forEach(game => {
             const row = document.createElement('tr');
             
-            // Icon cell (first column)
+            // Date cell (first column)
+            const dateCell = `<td>${game.date || '未知'}</td>`;
+            
+            // Icon cell
             let iconHtml = '无';
             if (game.icon_url) {
                 const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
@@ -99,14 +102,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const nameHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
             const nameCell = `<td>${nameHtml}</td>`;
             
-            // Other cells
+            // Status cell
             const statusCell = `<td><span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></td>`;
-            const dateCell = `<td>${game.date || '未知'}</td>`;
+
+            // Publisher cell (New)
+            const publisherCell = `<td>${game.publisher || '未知厂商'}</td>`;
+
+            // Platform cell
             const platformCell = `<td>${game.platform || '未知'}</td>`;
+
+            // Source cell
             const sourceCell = `<td>${game.source || '未知'}</td>`;
+
+            // Description cell (Last)
             const descriptionCell = `<td>${truncateText(game.description, 60) || '无'}</td>`;
             
-            row.innerHTML = iconCell + nameCell + statusCell + dateCell + platformCell + sourceCell + descriptionCell;
+            // Assemble row HTML in the new order
+            row.innerHTML = dateCell + iconCell + nameCell + statusCell + publisherCell + platformCell + sourceCell + descriptionCell;
             allGamesTbody.appendChild(row);
         });
 
@@ -182,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 加载全部游戏数据（带过滤和分页）---
     async function loadAllGames() {
-        allGamesTbody.innerHTML = '<tr><td colspan="7" class="loading-message">正在加载游戏列表...</td></tr>';
+        allGamesTbody.innerHTML = '<tr><td colspan="8" class="loading-message">正在加载游戏列表...</td></tr>'; // Adjusted colspan
         prevPageButton.disabled = true;
         nextPageButton.disabled = true;
 
@@ -192,12 +204,10 @@ document.addEventListener('DOMContentLoaded', () => {
             search: searchInput.value.trim(),
             status: statusFilter.value,
             source: sourceFilter.value,
-            // featured: ... // 可选的 featured 参数
         };
 
         const data = await fetchData('/games', params);
         if (data) {
-            // 移除了在这里调用 fetchAllGamesForStatus 的逻辑
             renderAllGames(data);
         } else {
             renderAllGames(null);
