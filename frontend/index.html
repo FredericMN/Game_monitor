@@ -33,14 +33,10 @@
             <h2 class="section-title">全部游戏列表</h2>
              <!-- 搜索和过滤栏 -->
             <div class="filter-bar">
-                <input type="text" id="search-input" placeholder="搜索游戏名称或分类...">
+                <input type="text" id="search-input" placeholder="搜索游戏名称...">
                 <select id="status-filter">
                     <option value="">所有状态</option>
-                    <!-- 状态选项可以动态添加或预定义 -->
-                    <option value="测试中">测试中</option>
-                    <option value="可预约">可预约</option>
-                    <option value="已上线">已上线</option>
-                    <option value="开发中">开发中</option>
+                    <!-- 状态选项将由 JS 动态填充 -->
                 </select>
                 <select id="source-filter">
                     <option value="">所有来源</option>
@@ -52,20 +48,18 @@
             <table class="styled-table">
                 <thead>
                     <tr>
+                        <th>图标</th> <!-- Icon first -->
                         <th>游戏名称</th>
                         <th>状态/计划</th>
-                        <th>更新日期/预计时间</th> <!-- 调整表头 -->
+                        <th>更新日期/预计时间</th> 
                         <th>平台</th>
                         <th>来源</th>
-                        <th>简介</th>
-                        <th>评分</th>
-                        <th>图标</th>
-                        <th>链接</th>
+                        <th>简介</th> <!-- Description last -->
                     </tr>
                 </thead>
                 <tbody id="all-games-tbody">
                     <!-- 表格内容将由 JS 动态填充 -->
-                    <tr><td colspan="9" class="loading-message">正在加载游戏列表...</td></tr>
+                    <tr><td colspan="7" class="loading-message">正在加载游戏列表...</td></tr> <!-- Adjusted colspan -->
                 </tbody>
             </table>
             <!-- 分页控件 -->

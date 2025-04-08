@@ -103,19 +103,23 @@ body {
 /* 状态标签 (复用之前的样式) */
 .status-tag {
     display: inline-block;
-    padding: 3px 8px;
+    padding: 4px 8px;
     border-radius: 4px;
-    font-size: 0.8em;
-    font-weight: bold;
+    font-size: 0.75em; /* 稍调整大小 */
+    font-weight: 600; /* 加粗一点 */
     color: white;
-    vertical-align: middle; /* 与旁边的文字垂直对齐 */
+    line-height: 1; /* 确保行高一致 */
+    text-align: center;
+    vertical-align: middle;
 }
-.status-online { background-color: #2ecc71; } /* 绿色 - 已上线 */
+.status-online { background-color: #27ae60; } /* 稍深的绿色 */
 .status-testing { background-color: #f39c12; } /* 橙色 - 测试 */
-.status-dev { background-color: #3498db; } /* 蓝色 - 开发中 */
-.status-preorder { background-color: #9b59b6; } /* 紫色 - 预约中 */
-.status-update { background-color: #7f8c8d; } /* 新增：灰色 - 更新 */
-.status-other { background-color: #bdc3c7; } /* 新增：浅灰色 - 其他 */
+.status-dev { background-color: #2980b9; } /* 稍深的蓝色 */
+.status-preorder { background-color: #8e44ad; } /* 稍深的紫色 */
+.status-release { background-color: #2c3e50; } /* 新增：深蓝灰 - 首发 */
+.status-reveal { background-color: #1abc9c; } /* 新增：青色 - 新游爆料 */
+.status-update { background-color: #7f8c8d; } 
+.status-other, .status-unknown { background-color: #bdc3c7; }
 
 
 /* 全游戏列表表格样式 */
@@ -140,8 +144,9 @@ body {
 
 .styled-table th,
 .styled-table td {
-    padding: 12px 15px; /* 单元格内边距 */
+    padding: 10px 12px; /* 调整单元格内边距 */
     text-align: left;
+    vertical-align: middle; /* 单元格内容垂直居中 */
 }
 
 .styled-table tbody tr {
@@ -164,4 +169,177 @@ body {
 /* 表格内的状态标签样式 (确保它们在表格单元格内也能正常显示) */
 .styled-table .status-tag {
     margin: 0; /* 移除可能存在的额外边距 */
+}
+
+/* 重点关注卡片内图标样式 - 调整尺寸 */
+.featured-card .featured-icon {
+    width: 68px; /* 调整 */
+    height: 68px; /* 调整 */
+    border-radius: 4px;
+    margin-right: 10px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+/* 重点关注卡片头部布局 */
+.featured-card .featured-card-header {
+    display: flex;
+    align-items: center; /* 垂直居中图标和标题 */
+    margin-bottom: 12px; /* 调整间距 */
+}
+
+.featured-card .featured-card-header h3 {
+    margin: 0;
+    font-size: 1.1em; /* 调整标题大小 */
+}
+
+/* 调整卡片内简介的样式 */
+.featured-card p:last-of-type { /* 可能需要根据实际情况调整选择器 */
+    margin-bottom: 15px; /* 简介和下方链接的间距 */
+}
+
+.game-link {
+    display: inline-block;
+    padding: 6px 12px;
+    background-color: #3498db;
+    color: white;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.9em;
+    transition: background-color 0.2s ease;
+}
+
+.game-link:hover {
+    background-color: #2980b9;
+}
+
+
+/* -- 调整筛选栏样式 -- */
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap; /* 在小屏幕上换行 */
+    gap: 12px; /* 调整元素间距 */
+    margin-bottom: 25px; /* 增加与表格的间距 */
+    padding: 12px 15px; /* 调整内边距 */
+    background-color: #ffffff;
+    border-radius: 6px; /* 统一圆角 */
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    align-items: center;
+}
+
+.filter-bar input[type="text"],
+.filter-bar select {
+    padding: 9px 12px; /* 调整输入框/下拉框内边距 */
+    border: 1px solid #dcdcdc; /* 更浅的边框 */
+    border-radius: 4px;
+    font-size: 0.95em; /* 调整字体大小 */
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-color: #fff; /* 确保背景色 */
+    height: 38px; /* 固定高度 */
+    box-sizing: border-box; /* 包含 padding 和 border */
+}
+
+.filter-bar input[type="text"]:focus,
+.filter-bar select:focus {
+    border-color: #007bff; /* 使用蓝色作为聚焦色 */
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.filter-bar input[type="text"] {
+    flex-grow: 1; /* 保持搜索框弹性增长 */
+    min-width: 150px; /* 最小宽度 */
+}
+
+.filter-bar select {
+     min-width: 120px; /* 下拉框最小宽度 */
+}
+
+.filter-bar button {
+    padding: 9px 18px; /* 调整按钮内边距 */
+    background-color: #007bff; /* 主题蓝色按钮 */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    height: 38px; /* 固定高度 */
+    box-sizing: border-box;
+}
+
+.filter-bar button:hover {
+    background-color: #0056b3;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 表格内图标样式 - 调整 */
+.styled-table .table-icon {
+    width: 46px; /* 调整 */
+    height: 46px; /* 调整 */
+    border-radius: 4px;
+    object-fit: cover;
+    display: block;
+}
+
+/* 表格内游戏名称链接样式 */
+.styled-table tbody td a {
+    color: #0056b3; /* 链接颜色 */
+    text-decoration: none; /* 移除下划线 */
+    font-weight: bold;
+    transition: color 0.2s ease;
+}
+
+.styled-table tbody td a:hover {
+    color: #003d80; /* 悬停颜色加深 */
+    text-decoration: underline; /* 悬停时加下划线 */
+}
+
+/* 表格内简介列样式 */
+.styled-table td:last-child { /* 假设简介是最后一列 */
+    font-size: 0.85em;
+    color: #666;
+    max-width: 250px; /* 限制最大宽度 */
+    white-space: normal; /* 允许换行 */
+}
+
+/* 加载提示信息样式 */
+.loading-message {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+}
+
+/* 分页控件样式 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 20px;
+    gap: 10px;
+}
+
+.pagination button {
+    padding: 8px 15px;
+    background-color: #eee;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.pagination button:disabled {
+    background-color: #f9f9f9;
+    color: #ccc;
+    cursor: not-allowed;
+}
+
+.pagination button:not(:disabled):hover {
+    background-color: #ddd;
+}
+
+.pagination #page-info {
+    font-weight: bold;
+    color: #555;
 } 

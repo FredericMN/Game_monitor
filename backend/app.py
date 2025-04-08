@@ -3,7 +3,9 @@ import json
 import glob # 导入 glob 用于查找文件
 import pandas as pd
 import math # 导入 math 模块用于 isnan 判断
-from flask import Flask, jsonify, request # 导入 jsonify 和 request
+import requests # 导入 requests 用于图片代理
+from io import BytesIO # 用于从内存发送文件
+from flask import Flask, jsonify, request, send_file, Response # 导入 jsonify, request, send_file, Response
 from flask_cors import CORS # 导入 CORS
 
 # --- 配置 --- #
@@ -157,6 +159,42 @@ def get_featured_games():
     ]
     
     return jsonify(featured_games)
+
+# --- 新增：图片代理路由 --- #
+@app.route('/api/image')
+def proxy_image():
+    """代理获取外部图片 URL，绕过防盗链"""
+    image_url = request.args.get('url')
+    if not image_url:
+        return "Missing image URL", 400
+
+    print(f"代理请求图片: {image_url}")
+    try:
+        # 设置请求头，模拟浏览器或爬虫，增加成功率
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36',
+            'Referer': 'https://www.taptap.cn/' # 尝试添加 Referer
+        }
+        response = requests.get(image_url, headers=headers, stream=True, timeout=10)
+        response.raise_for_status() # 如果状态码不是 2xx，则抛出异常
+
+        # 获取内容类型
+        content_type = response.headers.get('Content-Type')
+
+        # 使用 Response 流式传输，适合大图片，但 send_file 对 BytesIO 更直接
+        # return Response(response.iter_content(chunk_size=8192), content_type=content_type)
+
+        # 将内容读入内存中的 BytesIO 对象，然后使用 send_file
+        image_data = BytesIO(response.content)
+        return send_file(image_data, mimetype=content_type)
+
+    except requests.exceptions.RequestException as e:
+        print(f"代理请求失败: {e}")
+        # 返回一个占位符图片或错误状态可能更好，这里暂时返回 404
+        return "Failed to fetch image", 404
+    except Exception as e:
+        print(f"处理代理请求时发生未知错误: {e}")
+        return "Internal server error", 500
 
 
 # --- 应用启动 --- #

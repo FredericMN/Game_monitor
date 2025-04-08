@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalPages = 1;
     const perPage = 15; // 每页显示数量，可以根据需要调整
 
+    let allGamesData = []; // 变量用于存储从后端获取的所有游戏数据
+
     // --- 数据获取函数 ---
     async function fetchData(endpoint, params = {}) {
         const url = new URL(`${API_BASE_URL}${endpoint}`);
@@ -50,14 +52,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // 最多显示 8 个
         games.slice(0, 8).forEach(game => {
             const card = document.createElement('div');
-            card.className = 'game-card';
+            card.className = 'game-card featured-card'; // 添加一个特定类名
+
+            let iconHtml = '';
+            if (game.icon_url) {
+                const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
+                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="featured-icon">`;
+            }
+
             card.innerHTML = `
-                <h3>${game.name || '未知名称'}</h3>
+                <div class="featured-card-header">
+                    ${iconHtml}
+                    <h3>${game.name || '未知名称'}</h3>
+                </div>
                 <p><span class="label">状态/计划:</span> <span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></p>
                 <p><span class="label">更新日期:</span> ${game.date || '未知'}</p>
                 <p><span class="label">平台:</span> ${game.platform || '未知'}</p>
                 <p><span class="label">来源:</span> ${game.source || '未知'}</p>
-                <p><span class="label">简介:</span> ${truncateText(game.description, 50) || '无'}</p>
+                <p><span class="label">简介:</span> ${truncateText(game.description, 40) || '无'}</p> <!-- 缩短简介 -->
                 ${game.link ? `<a href="${game.link}" target="_blank" class="game-link">查看详情</a>` : ''}
             `;
             featuredGameList.appendChild(card);
@@ -67,25 +79,34 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAllGames(data) {
         allGamesTbody.innerHTML = ''; // 清空加载提示或旧数据
         if (!data || !data.games || data.games.length === 0) {
-            allGamesTbody.innerHTML = '<tr><td colspan="9">未找到符合条件的游戏。</td></tr>';
-            // 禁用分页
-            updatePaginationControls(0, 1, 1); // 总项目0, 总页数1, 当前页1
+            allGamesTbody.innerHTML = '<tr><td colspan="7">未找到符合条件的游戏。</td></tr>'; // Adjusted colspan
+            updatePaginationControls(0, 1, 1);
             return;
         }
 
         data.games.forEach(game => {
             const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${game.name || '未知名称'}</td>
-                <td><span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></td>
-                <td>${game.date || '未知'}</td>
-                <td>${game.platform || '未知'}</td>
-                <td>${game.source || '未知'}</td>
-                <td>${truncateText(game.description, 100) || '无'}</td>
-                <td>${game.rating || '暂无评分'}</td>
-                <td>${game.icon_url ? `<img src="${game.icon_url}" alt="${game.name}" width="30" height="30" style="vertical-align: middle;">` : '无'}</td>
-                <td>${game.link ? `<a href="${game.link}" target="_blank">链接</a>` : '无'}</td>
-            `;
+            
+            // Icon cell (first column)
+            let iconHtml = '无';
+            if (game.icon_url) {
+                const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
+                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="table-icon" loading="lazy">`; 
+            }
+            const iconCell = `<td>${iconHtml}</td>`;
+
+            // Name cell with link
+            const nameHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
+            const nameCell = `<td>${nameHtml}</td>`;
+            
+            // Other cells
+            const statusCell = `<td><span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></td>`;
+            const dateCell = `<td>${game.date || '未知'}</td>`;
+            const platformCell = `<td>${game.platform || '未知'}</td>`;
+            const sourceCell = `<td>${game.source || '未知'}</td>`;
+            const descriptionCell = `<td>${truncateText(game.description, 60) || '无'}</td>`;
+            
+            row.innerHTML = iconCell + nameCell + statusCell + dateCell + platformCell + sourceCell + descriptionCell;
             allGamesTbody.appendChild(row);
         });
 
@@ -113,11 +134,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function getStatusClass(status) {
         if (!status) return 'status-unknown';
         const lowerStatus = status.toLowerCase();
+        // 优先匹配更具体的
+        if (lowerStatus.includes('首发')) return 'status-release';
+        if (lowerStatus.includes('新游爆料')) return 'status-reveal'; // 注意 TapTap 可能有多种类似表述
         if (lowerStatus.includes('上线') || lowerStatus.includes('公测')) return 'status-online';
         if (lowerStatus.includes('测试')) return 'status-testing';
         if (lowerStatus.includes('预约') || lowerStatus.includes('预订')) return 'status-preorder';
         if (lowerStatus.includes('开发中')) return 'status-dev';
-        return 'status-unknown';
+        if (lowerStatus.includes('更新')) return 'status-update'; // 假设有更新状态
+        return 'status-unknown'; // 其他或未知
     }
 
     function truncateText(text, maxLength) {
@@ -126,9 +151,38 @@ document.addEventListener('DOMContentLoaded', () => {
         return text.substring(0, maxLength) + '...';
     }
 
+    // --- 填充状态过滤器 (确保使用 allGamesData) --- 
+    function populateStatusFilter(games) { // 这个 games 参数现在代表 allGamesData
+        const currentSelectedValue = statusFilter.value; 
+        const statuses = new Set();
+        games.forEach(game => {
+            if (game.status) {
+                statuses.add(game.status.trim());
+            }
+        });
+
+        statusFilter.innerHTML = '<option value="">所有状态</option>'; 
+        
+        const sortedStatuses = Array.from(statuses).sort(); 
+        
+        sortedStatuses.forEach(status => {
+            const option = document.createElement('option');
+            option.value = status;
+            option.textContent = status;
+            statusFilter.appendChild(option);
+        });
+        
+        // 尝试恢复之前的选中值 (如果存在于新列表中)
+        if (Array.from(statuses).includes(currentSelectedValue)) {
+            statusFilter.value = currentSelectedValue;
+        } else {
+             statusFilter.value = ""; // 如果之前选的值不在列表里了，重置为"所有状态"
+        }
+    }
+
     // --- 加载全部游戏数据（带过滤和分页）---
     async function loadAllGames() {
-        allGamesTbody.innerHTML = '<tr><td colspan="9" class="loading-message">正在加载游戏列表...</td></tr>'; // 显示加载提示
+        allGamesTbody.innerHTML = '<tr><td colspan="7" class="loading-message">正在加载游戏列表...</td></tr>';
         prevPageButton.disabled = true;
         nextPageButton.disabled = true;
 
@@ -138,12 +192,29 @@ document.addEventListener('DOMContentLoaded', () => {
             search: searchInput.value.trim(),
             status: statusFilter.value,
             source: sourceFilter.value,
-            // 如果有 featured 过滤需求，也可以在这里添加
-            // featured: document.querySelector('.navbar a.active[data-section="featured"]') ? true : null
+            // featured: ... // 可选的 featured 参数
         };
 
         const data = await fetchData('/games', params);
-        renderAllGames(data);
+        if (data) {
+            // 移除了在这里调用 fetchAllGamesForStatus 的逻辑
+            renderAllGames(data);
+        } else {
+            renderAllGames(null);
+        }
+    }
+    
+    // --- 获取所有游戏数据（仅用于状态填充，在初始加载时调用一次）---
+    async function fetchAllGamesForStatus() {
+        console.log("Fetching all games data for status filter (once)... ");
+        const allData = await fetchData('/games', { per_page: 10000 });
+        if (allData && allData.games) {
+            allGamesData = allData.games; // 存储完整数据
+            populateStatusFilter(allGamesData); // 使用完整数据填充状态过滤器
+        } else {
+            console.warn("Could not fetch all games data for status filter.");
+            populateStatusFilter([]); // 即使失败也尝试清空并填充默认值
+        }
     }
     
     // --- 加载重点游戏数据 ---
@@ -216,7 +287,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- 初始加载 ---
-    loadFeaturedGames(); // 加载重点游戏
-    loadAllGames();      // 加载第一页的全部游戏
+    async function initialLoad() {
+        loadFeaturedGames(); // 加载重点游戏
+        await fetchAllGamesForStatus(); // 先获取所有游戏数据并填充状态过滤器
+        loadAllGames();      // 然后加载第一页的全部游戏
+    }
+
+    initialLoad(); // 执行初始加载
 
 }); 
