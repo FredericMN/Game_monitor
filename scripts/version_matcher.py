@@ -5,6 +5,8 @@ import os
 import time
 import random
 import re
+import json # Added for caching
+import threading # Added for cache lock
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.edge.service import Service as EdgeService
@@ -15,10 +17,49 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 并发工作线程数 (可以根据机器性能调整)
-MAX_MATCH_WORKERS = 2
+MAX_MATCH_WORKERS = 5 # Adjusted for potentially longer individual queries
 
-# 用于缓存查询结果，避免重复查询同一个游戏
-version_cache = {}
+# --- 缓存配置 ---
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+CACHE_FILE = os.path.join(DATA_DIR, 'version_match_cache.jsonl')
+cache_lock = threading.Lock() # Lock for writing to cache file
+
+def load_version_cache():
+    """Loads the version match cache from the JSONL file."""
+    cache = {}
+    if not os.path.exists(CACHE_FILE):
+        return cache
+    try:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    data = json.loads(line.strip())
+                    # Store result keyed by name
+                    if 'name' in data and 'result' in data:
+                        cache[data['name']] = data['result']
+                except json.JSONDecodeError:
+                    print(f"[缓存警告] 无法解析缓存行: {line.strip()}")
+        print(f"[缓存] 从 {CACHE_FILE} 加载了 {len(cache)} 条记录。")
+    except Exception as e:
+        print(f"[缓存错误] 读取缓存文件时出错: {e}")
+    return cache
+
+def update_version_cache(game_name, result, cache_dict):
+    """Appends a result to the cache file and updates the in-memory cache, thread-safely."""
+    with cache_lock:
+        try:
+            # Update in-memory cache first
+            cache_dict[game_name] = result
+            # Append to file
+            with open(CACHE_FILE, 'a', encoding='utf-8') as f:
+                json.dump({"name": game_name, "result": result}, f, ensure_ascii=False)
+                f.write('\n')
+            # print(f"[缓存] 已更新缓存: {game_name} -> {'有结果' if result else '无结果'}")
+        except Exception as e:
+            print(f"[缓存错误] 写入缓存时出错 ({game_name}): {e}")
+
 
 def random_delay(min_sec=0.5, max_sec=1.5):
     """避免爬取过快"""
@@ -51,336 +92,352 @@ def setup_matcher_driver(headless=True):
         print(f"[版号匹配] 初始化 WebDriver 时出错: {e}")
         return None
 
-def fetch_single_game_version_info(game_name):
+def _perform_nppa_query(query_name):
     """
-    从 NPPA 网站获取单个游戏的版号信息。
-    参考自 crawler.py 中的 fetch_game_info。
-
-    参数:
-        game_name (str): 游戏名称。
-
-    返回:
-        dict: 包含版号信息的字典，如果未找到或出错则返回 None。
-              字典结构: {'publisher_unit': ..., 'operator_unit': ..., 'approval_num': ..., 
-                       'publication_num': ..., 'approval_date': ..., 'game_type': ..., 
-                       'declaration_category': ..., 'multiple_results': '是'/'否'}
+    Performs the actual NPPA query using Selenium for a given name.
+    Returns the result dict or None.
+    (This encapsulates the core Selenium logic from the previous fetch_single_game_version_info)
     """
-    if not game_name or game_name == "未知名称":
+    if not query_name:
         return None
-        
-    # 检查缓存
-    if game_name in version_cache:
-        print(f"[版号匹配] 游戏 '{game_name}' 使用缓存结果。")
-        return version_cache[game_name]
 
-    print(f"[版号匹配] 开始查询游戏 '{game_name}' 的版号信息...")
+    print(f"[版号查询] 查询: '{query_name}'...") # Log the name being queried
     driver = setup_matcher_driver(headless=True)
     if not driver:
-        version_cache[game_name] = None # 记录查询失败
-        return None
+        return None # Driver setup failed
 
     result_info = None
     try:
-        # 清理游戏名称中的括号等内容
-        query_name = re.sub(r'（[^）]*）', '', game_name)
-        query_name = re.sub(r'\([^)]*\)', '', query_name).strip()
-        if not query_name:
-             print(f"[版号匹配] 游戏名 '{game_name}' 清理后为空，跳过查询。")
-             version_cache[game_name] = None
-             driver.quit()
-             return None
-             
-        url = f"https://www.nppa.gov.cn/bsfw/jggs/cxjg/index.html?mc={query_name}&cbdw=&yydw=&wh=undefined&description=#"
-        print(f"[版号匹配] 访问查询 URL: {url}")
+        # Clean name for URL (though NPPA site might handle spaces)
+        url_query_name = query_name # Use the name directly for now
+        url = f"https://www.nppa.gov.cn/bsfw/jggs/cxjg/index.html?mc={url_query_name}&cbdw=&yydw=&wh=undefined&description=#"
+        # print(f"[版号查询] 访问 URL: {url}") # Less verbose
 
-        # 添加重试机制访问页面
-        max_retries = 3
+        max_retries = 2 # Reduced retries as cache handles some failures
         page_loaded = False
         for retry in range(max_retries):
             try:
                 driver.get(url)
-                # 等待核心表格数据区域出现
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#dataCenter"))
-                )
-                print("[版号匹配] 查询结果页面加载成功。")
+                WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "#dataCenter")))
+                # print("[版号查询] 查询结果页面加载成功。")
                 page_loaded = True
-                break # 成功加载则跳出重试
+                break
             except TimeoutException:
-                print(f"[版号匹配] 游戏 '{game_name}' 页面加载超时 (尝试 {retry+1}/{max_retries})。")
-                if retry == max_retries - 1:
-                    print("[版号匹配] 多次尝试加载页面失败。")
+                # print(f"[版号查询] '{query_name}' 页面加载超时 (尝试 {retry+1}/{max_retries})。")
+                if retry == max_retries - 1: print(f"[版号查询] '{query_name}' 页面加载多次超时。")
             except Exception as load_e:
-                 print(f"[版号匹配] 加载页面时发生错误 (尝试 {retry+1}/{max_retries}): {load_e}")
-                 if retry == max_retries - 1:
-                      print("[版号匹配] 多次尝试加载页面失败。")
-            # 重试前稍作等待
-            if not page_loaded and retry < max_retries - 1:
-                 time.sleep(2)
-                 
-        if not page_loaded:
-            raise TimeoutException("页面加载失败") # 如果最终加载失败，则抛出异常
+                 print(f"[版号查询] 加载页面时出错 ({query_name}, 尝试 {retry+1}/{max_retries}): {load_e}")
+            if not page_loaded and retry < max_retries - 1: time.sleep(1.5)
 
-        # 查找结果表格行
+        if not page_loaded:
+            raise TimeoutException("页面加载失败")
+
         try:
-             # 等待至少一行数据出现 (使用更灵活的等待条件)
-             WebDriverWait(driver, 10).until(
-                 lambda d: len(d.find_elements(By.CSS_SELECTOR, "#dataCenter tr")) > 0
-             )
+             WebDriverWait(driver, 8).until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "#dataCenter tr")) > 0)
              result_rows = driver.find_elements(By.CSS_SELECTOR, "#dataCenter tr")
-             print(f"[版号匹配] 找到 {len(result_rows)} 条结果。")
+             # print(f"[版号查询] 找到 {len(result_rows)} 条结果 for '{query_name}'.")
         except TimeoutException:
-             print(f"[版号匹配] 未查询到游戏 '{game_name}' 的版号信息。")
-             result_rows = [] # 确保 result_rows 是列表
+             # print(f"[版号查询] 未查询到 '{query_name}' 的版号信息。")
+             result_rows = []
         except Exception as find_e:
-             print(f"[版号匹配] 查找结果行时出错: {find_e}")
-             result_rows = [] # 确保 result_rows 是列表
+             print(f"[版号查询] 查找结果行时出错 ({query_name}): {find_e}")
+             result_rows = []
 
         if result_rows:
             multiple_results_flag = "是" if len(result_rows) > 1 else "否"
             target_row_element = None
-            
-            # 尝试寻找完全匹配游戏名的行
+            # Try to find exact match first (case-insensitive might be better?)
             for row in result_rows:
                 try:
-                    row_game_name = row.find_element(By.CSS_SELECTOR, "td:nth-child(2) a").text.strip()
-                    if row_game_name == game_name:
+                    row_game_name_elem = row.find_element(By.CSS_SELECTOR, "td:nth-child(2) a")
+                    row_game_name = row_game_name_elem.text.strip()
+                    # Use cleaned names for comparison? Or exact match? Sticking to exact for now.
+                    if row_game_name == query_name:
                         target_row_element = row
-                        print(f"[版号匹配] 找到与 '{game_name}' 完全匹配的结果行。")
+                        # print(f"[版号查询] 找到与 '{query_name}' 完全匹配的结果行。")
                         break
-                except NoSuchElementException:
-                    continue # 跳过没有链接的行或结构异常的行
-            
-            # 如果没有完全匹配的，取第一行作为结果
+                except NoSuchElementException: continue
+
             if not target_row_element:
                 target_row_element = result_rows[0]
-                print("[版号匹配] 未找到完全匹配结果，使用第一条结果。")
-            
-            # 从目标行提取信息
-            result_info = extract_info_from_row(target_row_element, multiple_results_flag, driver)
-        
-        else:
-            # 没有找到结果行
-            result_info = None
+                # print(f"[版号查询] 未找到完全匹配 '{query_name}'，使用第一条结果。")
 
-    except TimeoutException as e:
-        print(f"[版号匹配] 处理游戏 '{game_name}' 时发生超时: {e}")
-        result_info = None # 超时也标记为查询失败
+            result_info = extract_info_from_row(target_row_element, multiple_results_flag, driver)
+
     except Exception as e:
-        print(f"[版号匹配] 查询游戏 '{game_name}' 版号时发生未预料错误: {e}")
-        result_info = None # 其他异常也标记为查询失败
+        # Don't print full timeout error if it's just timeout
+        if not isinstance(e, TimeoutException):
+             print(f"[版号查询] 查询 '{query_name}' 时发生错误: {e}")
+        result_info = None
     finally:
         if driver:
             driver.quit()
-            print(f"[版号匹配] 游戏 '{game_name}' 查询结束，浏览器已关闭。")
-            
-    # 存入缓存
-    version_cache[game_name] = result_info
+            # print(f"[版号查询] '{query_name}' 查询结束，浏览器关闭。")
+
     return result_info
 
+
+def fetch_single_game_version_info_with_cache(game_name, cache_dict):
+    """
+    Fetches version info for a single game, using cache and handling spaces.
+    Updates cache after query.
+    """
+    if not game_name or game_name == "未知名称":
+        return None
+
+    # 1. Cache Check - Only use if result is not None
+    cached_result = cache_dict.get(game_name)
+    if cached_result is not None: # Crucial: Don't reuse 'None' results
+        # print(f"[缓存命中] 使用缓存结果 for '{game_name}'.")
+        return cached_result
+
+    print(f"[版号匹配] 缓存未命中或无效，查询: '{game_name}'")
+
+    # 2. Perform Query (with space logic)
+    final_result = None
+    if " " in game_name:
+        result1 = _perform_nppa_query(game_name) # Query full name
+        if result1 is None:
+            truncated_name = game_name.split(" ", 1)[0]
+            if truncated_name != game_name: # Avoid re-querying if space was at the end
+                 print(f"[版号匹配] 完整名称 '{game_name}' 无结果，尝试截断名称: '{truncated_name}'")
+                 result2 = _perform_nppa_query(truncated_name) # Query truncated name
+                 final_result = result2
+            else:
+                 final_result = None # Space was at end, still no result
+        else:
+            final_result = result1 # Use result from full name query
+    else:
+        # No space, direct query
+        final_result = _perform_nppa_query(game_name)
+
+    # 3. Update Cache
+    update_version_cache(game_name, final_result, cache_dict)
+
+    return final_result
+
+
 def extract_info_from_row(row_element, multiple_flag, driver):
-    """
-    从 NPPA 查询结果的一行中提取详细版号信息。
-    参考自 crawler.py 中的 extract_game_info。
-    """
+    """从 NPPA 查询结果的一行中提取详细版号信息 (基本保持不变, 减少打印)"""
     try:
         tds = row_element.find_elements(By.TAG_NAME, "td")
-        if len(tds) < 7:
-            print("[版号匹配] 结果行单元格数量不足 (< 7)。")
-            return None
-            
-        # 列表页信息
-        game_name_in_row = tds[1].text.strip() # 实际查到的游戏名
+        if len(tds) < 7: return None # Cell count check
+
+        # Extract the name found on NPPA site
+        nppa_name = ""
+        try:
+            nppa_name_element = tds[1].find_element(By.CSS_SELECTOR, "a")
+            nppa_name = nppa_name_element.text.strip()
+        except NoSuchElementException:
+            nppa_name = tds[1].text.strip() # Fallback if no link
+
         publisher_unit = tds[2].text.strip()
         operator_unit = tds[3].text.strip()
         approval_num = tds[4].text.strip()
         publication_num = tds[5].text.strip()
         approval_date = tds[6].text.strip()
-        print(f"[版号匹配] 从列表页提取: 出版={publisher_unit}, 运营={operator_unit}, 文号={approval_num}, 时间={approval_date}")
 
         detail_url = ""
         try:
             link_element = tds[1].find_element(By.TAG_NAME, "a")
             detail_url = link_element.get_attribute("href")
-        except NoSuchElementException:
-            print("[版号匹配] 未找到详情页链接。")
+        except NoSuchElementException: pass
 
-        # 详情页信息
-        game_type = "未知类型"
-        declaration_category = "未知类别"
+        game_type = ""
+        declaration_category = ""
         if detail_url:
-            print(f"[版号匹配] 尝试访问版号详情页: {detail_url}")
             original_window = driver.current_window_handle
+            new_window = None
             try:
                 driver.execute_script("window.open(arguments[0]);", detail_url)
                 WebDriverWait(driver, 10).until(EC.number_of_windows_to_be(2))
                 new_window = [window for window in driver.window_handles if window != original_window][0]
                 driver.switch_to.window(new_window)
-                print(f"[版号匹配] 已切换到详情页窗口: {driver.current_url}")
-                random_delay(1, 2)
-
+                random_delay(0.5, 1)
                 try:
-                    # 等待详情表格加载
-                    WebDriverWait(driver, 15).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, ".cFrame.nFrame table"))
-                    )
-                    print("[版号匹配] 版号详情表格已加载。")
+                    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".cFrame.nFrame table")))
                     detail_rows = driver.find_elements(By.CSS_SELECTOR, ".cFrame.nFrame table tr")
                     for ln in detail_rows:
                         try:
                             label = ln.find_element(By.XPATH, "./td[1]").text.strip()
                             value = ln.find_element(By.XPATH, "./td[2]").text.strip()
-                            if label == "游戏类型":
-                                game_type = value
-                                print(f"[版号匹配] 找到游戏类型: {game_type}")
-                            elif label == "申报类别":
-                                declaration_category = value
-                                print(f"[版号匹配] 找到申报类别: {declaration_category}")
-                        except NoSuchElementException:
-                            continue # 跳过不符合结构的行
-                        except Exception as cell_e:
-                             print(f"[版号匹配] 处理详情单元格时出错: {cell_e}")
-                except TimeoutException:
-                    print("[版号匹配] 等待版号详情表格超时。")
-                except Exception as detail_table_e:
-                    print(f"[版号匹配] 处理版号详情表格时出错: {detail_table_e}")
-
+                            if label == "游戏类型": game_type = value
+                            elif label == "申报类别": declaration_category = value
+                        except NoSuchElementException: continue
+                        except Exception as cell_e: print(f"[版号信息] 处理详情单元格时出错: {cell_e}")
+                except TimeoutException: pass
+                except Exception as detail_table_e: print(f"[版号信息] 处理版号详情表格时出错: {detail_table_e}")
             finally:
-                # 确保关闭窗口并切回
                 try:
-                    if len(driver.window_handles) > 1:
-                         driver.close()
-                    driver.switch_to.window(original_window)
-                    WebDriverWait(driver, 5).until(EC.number_of_windows_to_be(1))
-                    print(f"[版号匹配] 已切回原始窗口。")
-                except Exception as switch_e:
-                    print(f"[版号匹配] 关闭或切换窗口时出错: {switch_e}")
-                    # 如果切换失败，可能影响后续操作，但尝试继续
-                    pass
-        
-        # 组装结果字典
+                    if new_window and new_window in driver.window_handles and driver.current_window_handle == new_window:
+                        driver.close()
+                    if original_window in driver.window_handles:
+                         driver.switch_to.window(original_window)
+                except Exception as switch_e: print(f"[版号信息] 关闭或切换窗口时出错: {switch_e}")
+
         return {
+            "nppa_name": nppa_name, # Include the name found on NPPA site
             "publisher_unit": publisher_unit,
             "operator_unit": operator_unit,
             "approval_num": approval_num,
             "publication_num": publication_num,
             "approval_date": approval_date,
-            "game_type": game_type,
+            "game_type_version": game_type,
             "declaration_category": declaration_category,
             "multiple_results": multiple_flag
         }
 
     except Exception as e:
-        print(f"[版号匹配] 从行元素提取信息时出错: {e}")
+        print(f"[版号信息] 从行元素提取信息时出错: {e}")
         return None
+
+def worker_task(game_info, cache_dict):
+    """Worker function for ThreadPoolExecutor."""
+    # game_info contains the cleaned name from collect_games under the 'name' key
+    query_name = game_info.get('name')
+    result = fetch_single_game_version_info_with_cache(query_name, cache_dict)
+
+    # Create the update dictionary
+    update_data = {}
+    if result:
+        # Merge all fields from the successful result (including nppa_name)
+        update_data.update(result)
+        update_data['version_checked'] = True
+        # DO NOT update game_info['name'] here. Let collect_games handle the primary name.
+    else:
+        update_data['version_checked'] = False # Mark as checked, even if no result
+
+    # Return a dictionary containing only the updates to be applied
+    # to the original game_info in the main thread/process
+    # We also need a way to identify which original game_info this corresponds to
+    # Let's assume game_info has a unique identifier, e.g., '_original_index'
+    return {
+        "_original_index": game_info.get("_original_index"), # Pass index back
+        "update_data": update_data
+    }
+
 
 def match_version_numbers_for_games(games_list):
     """
-    为游戏列表批量匹配版号信息（并发执行）。
-    直接修改传入的列表中的字典。
-
+    为游戏列表批量匹配版号信息（并发执行, 带缓存和空格处理）。
+    修改传入的列表中的字典。
     参数:
-        games_list (list): 包含游戏信息字典的列表。每个字典至少需要有 'name' 键。
-
+        games_list (list): 包含游戏信息字典的列表。每个字典至少需要有 'name' 键 (应为清洗后的名称)。
+                         It's recommended to add a unique index, e.g., '_original_index'
+                         to each dict before calling this function.
     返回:
-        list: 更新了版号信息后的游戏列表。
+        list: 返回传入的列表，但其内容已被修改。
     """
     if not games_list:
         return []
 
-    print(f"\n开始为 {len(games_list)} 个游戏批量匹配版号信息 (使用最多 {MAX_MATCH_WORKERS} 个并发线程)...")
+    print(f"\n[版号匹配] 开始为 {len(games_list)} 个游戏批量匹配版号 (并发: {MAX_MATCH_WORKERS})...")
     start_time = time.time()
-    
-    # 创建需要查询的游戏列表（去重，避免重复查询）
-    games_to_query = list(set([g.get('name') for g in games_list if g.get('name') and g.get('name') != "未知名称"]))
-    print(f"需要查询 {len(games_to_query)} 个独立的游戏名称。")
-    
-    results_map = {}
+
+    version_cache_dict = load_version_cache()
+    total_tasks = len(games_list)
     completed_count = 0
-    total_query_count = len(games_to_query)
+
+    # Ensure each game has an index if not provided
+    for i, game in enumerate(games_list):
+        if "_original_index" not in game:
+            game["_original_index"] = i
 
     with ThreadPoolExecutor(max_workers=MAX_MATCH_WORKERS) as executor:
-        future_map = {executor.submit(fetch_single_game_version_info, name): name for name in games_to_query}
+        future_map = {executor.submit(worker_task, game_info, version_cache_dict): game_info["_original_index"] for game_info in games_list}
 
         for future in as_completed(future_map):
-            game_name = future_map[future]
+            original_index = future_map[future]
             try:
-                version_info = future.result()
-                results_map[game_name] = version_info # 存储结果，包括 None
-                if version_info:
-                     print(f"[版号匹配] 游戏 '{game_name}' 匹配成功。")
+                # Get the result dict containing index and update_data
+                worker_result = future.result()
+                if worker_result and worker_result.get("_original_index") is not None:
+                    idx = worker_result["_original_index"]
+                    update_data = worker_result.get("update_data", {})
+                    # Find the correct dict in the original list and update it
+                    # This assumes the original list order is preserved or indices are reliable
+                    # A safer way might be to build a new list, but for in-place modification:
+                    target_dict = next((g for g in games_list if g.get("_original_index") == idx), None)
+                    if target_dict:
+                        target_dict.update(update_data)
+                    else:
+                         print(f"\n[版号匹配警告] 无法找到索引 {idx} 的原始记录进行更新。")
                 else:
-                     print(f"[版号匹配] 游戏 '{game_name}' 未找到版号或查询出错。")
+                    print(f"\n[版号匹配警告] Worker 返回无效结果: {worker_result}")
+
+                completed_count += 1
+                progress = int(completed_count * 100 / total_tasks)
+                if completed_count % 10 == 0 or completed_count == total_tasks:
+                     print(f"[版号匹配] 进度: {progress}% ({completed_count}/{total_tasks})", end='\r', flush=True)
+
             except Exception as e:
-                print(f"[版号匹配] 处理游戏 '{game_name}' 的查询结果时出错: {e}")
-                results_map[game_name] = None # 标记为失败
-            
-            completed_count += 1
-            progress = int(completed_count * 100 / total_query_count)
-            print(f"[版号匹配] 查询进度: {progress}% ({completed_count}/{total_query_count})", end='\r')
-            
-    print("\n[版号匹配] 所有查询任务完成。开始将结果合并回游戏列表...")
+                # Find the game name corresponding to the failed future's index
+                failed_game_name = "未知"
+                target_dict = next((g for g in games_list if g.get("_original_index") == original_index), None)
+                if target_dict:
+                    failed_game_name = target_dict.get('name', '未知')
+                    target_dict['version_checked'] = False # Mark as failed
 
-    # 将查询结果合并回原始列表
-    for game_dict in games_list:
-        game_name = game_dict.get('name')
-        if game_name in results_map:
-            version_data = results_map[game_name]
-            if version_data:
-                # 将版号信息字段添加到游戏字典中
-                game_dict.update(version_data)
-                # 可以选择添加一个标记，表示版号已查询
-                game_dict['version_checked'] = True
-            else:
-                 # 版号未找到或查询失败
-                 game_dict['version_checked'] = False # 标记为已检查但未找到
-                 # 可以选择填充默认值
-                 game_dict['publisher_unit'] = ""
-                 game_dict['operator_unit'] = ""
-                 game_dict['approval_num'] = ""
-                 # ... 其他版号字段
-        else:
-            # 游戏名称未查询（例如"未知名称"）
-            game_dict['version_checked'] = False
+                print(f"\n[版号匹配] 处理游戏 '{failed_game_name}' (索引 {original_index}) 时线程出错: {e}")
 
-    end_time = time.time()
-    print(f"[版号匹配] 批量匹配完成，耗时: {end_time - start_time:.2f} 秒。")
+    print(f"\n[版号匹配] 批量匹配完成，耗时: {time.time() - start_time:.2f} 秒。")
     return games_list
 
 # --- 主程序入口 (用于测试) --- #
 if __name__ == "__main__":
+    print("[测试模式] 开始...")
+    # Keep the test logic, but it will now use the cache
     import json
     import os
+    # Need clean_game_name for testing
+    def clean_game_name(name):
+        """清理游戏名称，移除常见的宣传后缀和括号内容"""
+        if not name: return "未知名称"
+        cleaned = re.sub(r'[（(].*?[)）]', '', name)
+        cleaned = re.sub(r'[-–—]\s*[^-\s]+$', '', cleaned)
+        cleaned = cleaned.strip()
+        return cleaned if cleaned else name
 
-    # 定义要读取的 JSONL 文件路径
     data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-    target_file = os.path.join(data_dir, "taptap_games_2025-04-09.jsonl")
+    target_file = os.path.join(data_dir, "taptap_games_2025-04-08.jsonl") # Example test file
 
     test_games = []
     if os.path.exists(target_file):
-        print(f"读取测试文件: {target_file}")
+        print(f"[测试模式] 读取测试文件: {target_file}")
         try:
             with open(target_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     try:
                         game_data = json.loads(line.strip())
-                        # 只需要 name 和 source (或其他必要字段) 用于匹配测试
-                        test_games.append({"name": game_data.get("name"), "source": game_data.get("source", "TapTap")})
+                        # IMPORTANT: Use the CLEANED name for testing match function
+                        cleaned_name = clean_game_name(game_data.get("name"))
+                        # Pass other info if needed by worker_task structure
+                        test_games.append({"name": cleaned_name, "source": game_data.get("source", "TapTap"), "_original_index_test": len(test_games)})
                     except json.JSONDecodeError:
-                        print(f"警告: 无法解析行: {line.strip()}")
-            print(f"从 {target_file} 加载了 {len(test_games)} 个游戏进行测试。")
+                        print(f"[测试警告] 无法解析行: {line.strip()}")
+            print(f"[测试模式] 从 {target_file} 加载了 {len(test_games)} 个游戏进行测试。")
         except Exception as e:
-            print(f"读取测试文件时出错 ({target_file}): {e}")
-            test_games = [] # 出错则清空
+            print(f"[测试错误] 读取测试文件时出错 ({target_file}): {e}")
+            test_games = []
     else:
-        print(f"错误: 测试文件未找到 {target_file}")
+        print(f"[测试错误] 测试文件未找到 {target_file}")
+
+    # Add a specific test case for space handling
+    test_games.append({"name": "地下城与勇士", "source": "Test", "_original_index_test": len(test_games)}) # Name with space
+    test_games.append({"name": "泡泡龙 ", "source": "Test", "_original_index_test": len(test_games)}) # Space at end
+    test_games.append({"name": "鸣潮", "source": "Test", "_original_index_test": len(test_games)}) # Known game
 
     if test_games:
-        print("\n === 开始测试版号匹配 === \n")
-        updated_games = match_version_numbers_for_games(test_games)
+        print("\n[测试模式] === 开始测试版号匹配 (带缓存和空格逻辑) === \n")
+        # The function modifies the list in place
+        match_version_numbers_for_games(test_games)
 
-        print("\n === 测试结果 === ")
-        # 使用 json.dumps 输出，更容易阅读
-        print(json.dumps(updated_games, indent=2, ensure_ascii=False))
+        print("\n[测试模式] === 测试结果 (列表已被修改) === ")
+        print(json.dumps(test_games, indent=2, ensure_ascii=False))
+
+        # Optional: Clear cache for next clean run if needed (for testing purposes only)
+        # if os.path.exists(CACHE_FILE):
+        #     print("\n[测试模式] 清理缓存文件...")
+        #     os.remove(CACHE_FILE)
     else:
-        print("\n未能加载测试数据，跳过版号匹配测试。") 
+        print("\n[测试模式] 未能加载测试数据，跳过版号匹配测试。") 

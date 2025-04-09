@@ -31,7 +31,7 @@ BASE_URL = "https://www.16p.com"
 DEFAULT_TARGET_URL = f"{BASE_URL}/newgame"
 
 # 多线程配置
-MAX_WORKERS = 3
+MAX_WORKERS = 5
 
 # 文件写入锁
 file_lock = threading.Lock()
@@ -561,12 +561,12 @@ def process_game_item(original_16p_link, basic_info, list_page_icon_url, output_
                 print(f"[线程 {thread_id}] 关闭 WebDriver 时出错: {quit_e}")
 
 
-def get_16p_data(target_url):
+def get_16p_data(target_url=DEFAULT_TARGET_URL):
     """
     获取指定 URL (16p 开测表) 的国内游戏信息 (多线程优化版)。
     """
     print(f"开始抓取 16p 页面 {target_url} 的国内游戏信息 (多线程模式, Max Workers: {MAX_WORKERS})...")
-    output_filename = f'16p_games_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl' # 加入时间戳避免覆盖
+    output_filename = f'p16_games_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl' # Consistent prefix
     output_path = os.path.join(DATA_DIR, output_filename)
 
     # 1. 加载已存在的原始链接用于去重
