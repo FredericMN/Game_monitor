@@ -10,7 +10,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusFilter = document.getElementById('status-filter');
     const sourceFilter = document.getElementById('source-filter');
     const filterButton = document.getElementById('filter-button');
-    const featuredColumnHead = document.getElementById('featured-column-head');
     const topGamesSection = document.getElementById('top-games-section');
     const gamesTableTitle = document.getElementById('games-table-title');
 
@@ -18,35 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentPage = 1;
     let totalPages = 1;
-    const perPage = 15; // 每页显示数量，可以根据需要调整
+    const perPage = 15; // 每页显示数量，与后端一致
 
-    let allGamesData = []; // 变量用于存储从后端获取的所有游戏数据
-    let userFeaturedGames = loadUserFeaturedGames(); // 存储用户自选的重点关注游戏
+    let allGamesData = []; // 变量用于存储从后端获取的所有游戏数据 (用于填充过滤器)
     let currentSection = 'all'; // 当前激活的页签，默认为全部游戏
-
-    // --- 用户重点关注游戏存储功能 ---
-    function loadUserFeaturedGames() {
-        const saved = localStorage.getItem('userFeaturedGames');
-        return saved ? JSON.parse(saved) : [];
-    }
-
-    function saveUserFeaturedGames() {
-        localStorage.setItem('userFeaturedGames', JSON.stringify(userFeaturedGames));
-    }
-
-    function toggleFeaturedGame(gameId, featured) {
-        if (featured && !userFeaturedGames.includes(gameId)) {
-            userFeaturedGames.push(gameId);
-        } else if (!featured) {
-            userFeaturedGames = userFeaturedGames.filter(id => id !== gameId);
-        }
-        saveUserFeaturedGames();
-        
-        // 如果在首页，则需要刷新重点游戏区域
-        if (currentSection === 'all') {
-            loadFeaturedGames();
-        }
-    }
 
     // --- 数据获取函数 ---
     async function fetchData(endpoint, params = {}) {
@@ -60,13 +34,28 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                console.error(`HTTP error! status: ${response.status}, url: ${url}`); // 记录更详细的错误
+                // 尝试读取错误响应体
+                let errorBody = 'No error body available.';
+                try {
+                    errorBody = await response.text();
+                    console.error(`Error body: ${errorBody}`);
+                } catch (e) {
+                    console.error('Could not read error response body:', e);
+                }
+                throw new Error(`HTTP error! status: ${response.status}. ${errorBody}`);
             }
             const data = await response.json();
             console.log("Data received:", data); // 调试日志
             return data;
         } catch (error) {
             console.error('Fetch data error:', error);
+            // 向用户显示更友好的错误提示，或者记录错误
+            if (endpoint === '/games' && allGamesTbody) {
+                 allGamesTbody.innerHTML = `<tr><td colspan="6">加载数据失败，请稍后重试或联系管理员。(${error.message})</td></tr>`;
+            } else if (endpoint === '/featured-games' && featuredGameList) {
+                 featuredGameList.innerHTML = `<p>加载重点游戏失败。(${error.message})</p>`;
+            }
             return null; // 或者可以返回一个包含错误信息的对象
         }
     }
@@ -78,16 +67,20 @@ document.addEventListener('DOMContentLoaded', () => {
             featuredGameList.innerHTML = '<p>暂无重点关注游戏。</p>';
             return;
         }
-        // 最多显示 16 个
+        // 最多显示 16 个 (可以在后端限制，前端也做一层保护)
         games.slice(0, 16).forEach(game => {
             const card = document.createElement('div');
-            card.className = 'game-card featured-card';
+            card.className = 'game-card featured-card'; // 保持类名一致
 
             let iconHtml = '';
-            if (game.icon_url) {
+            // 确保 game.icon_url 存在且不为空
+            if (game.icon_url && String(game.icon_url).trim() !== '') {
                 const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
-                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="featured-icon">`;
+                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="featured-icon" loading="lazy">`; // 添加 lazy loading
+            } else {
+                iconHtml = '<div class="featured-icon placeholder-icon">无图</div>'; // 添加占位符样式
             }
+
 
             card.innerHTML = `
                 <div class="featured-card-header">
@@ -106,39 +99,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderAllGames(data) {
         allGamesTbody.innerHTML = ''; // 清空加载提示或旧数据
+        // 注意：现在没有单独的"重点关注"列，固定为6列
+        const colspan = 6;
         if (!data || !data.games || data.games.length === 0) {
-            const colspan = currentSection === 'featured' ? 7 : 6;
             allGamesTbody.innerHTML = `<tr><td colspan="${colspan}">未找到符合条件的游戏。</td></tr>`;
             updatePaginationControls(0, 1, 1);
             return;
         }
 
-        // 检查是否在"热门关注"页签下
-        if (currentSection === 'featured') {
-            featuredColumnHead.style.display = 'table-cell'; // 显示"重点关注"列表头
-        } else {
-            featuredColumnHead.style.display = 'none'; // 隐藏"重点关注"列表头
-        }
-
         data.games.forEach(game => {
             const row = document.createElement('tr');
-            const gameId = game.id || `${game.name}-${game.publisher}`; // 使用ID或生成唯一标识
-            
+            // const gameId = game.id || `${game.name}-${game.publisher}`; // 不再需要 gameId 进行本地操作
+
             // Date cell (first column)
             const dateCell = `<td>${game.date || '未知'}</td>`;
-            
+
             // Icon cell
             let iconHtml = '无';
-            if (game.icon_url) {
+            if (game.icon_url && String(game.icon_url).trim() !== '') {
                 const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
-                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="table-icon" loading="lazy">`; 
+                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="table-icon" loading="lazy">`;
             }
             const iconCell = `<td>${iconHtml}</td>`;
 
             // Name cell with link
             const nameHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
             const nameCell = `<td>${nameHtml}</td>`;
-            
+
             // Status cell
             const statusCell = `<td><span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></td>`;
 
@@ -146,9 +133,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const publisherCell = `<td>${game.publisher || '未知厂商'}</td>`;
 
             // Description cell
-            const descriptionCell = `<td>${truncateText(game.description, 60) || '无'}</td>`;
-            
-            // Featured toggle cell (Only visible in featured tab)
+            const descriptionCell = `<td class="description-cell">${truncateText(game.description, 60) || '无'}</td>`; // 给简介单元格添加类名
+
+            // 移除 Featured toggle cell
+            /*
             const isFeatured = userFeaturedGames.includes(gameId);
             const featuredCell = `
                 <td class="featured-toggle-cell" ${currentSection !== 'featured' ? 'style="display:none;"' : ''}>
@@ -158,12 +146,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     </label>
                 </td>
             `;
-            
-            // Assemble row HTML
-            row.innerHTML = dateCell + iconCell + nameCell + statusCell + publisherCell + descriptionCell + featuredCell;
+            */
+
+            // Assemble row HTML (6 columns)
+            row.innerHTML = dateCell + iconCell + nameCell + statusCell + publisherCell + descriptionCell;
             allGamesTbody.appendChild(row);
-            
-            // 添加开关事件监听器
+
+            // 移除开关事件监听器
+            /*
             if (currentSection === 'featured') {
                 const toggleInput = row.querySelector('.featured-toggle');
                 if (toggleInput) {
@@ -173,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             }
+            */
         });
 
         // 更新分页
@@ -188,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
             prevPageButton.disabled = true;
             nextPageButton.disabled = true;
         } else {
-            pageInfo.textContent = `页码 ${currentPage} / ${totalPages}`; 
+            pageInfo.textContent = `页码 ${currentPage} / ${totalPages}`;
             prevPageButton.disabled = currentPage <= 1;
             nextPageButton.disabled = currentPage >= totalPages;
         }
@@ -198,10 +189,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 辅助函数 ---
     function getStatusClass(status) {
         if (!status) return 'status-unknown';
-        const lowerStatus = status.toLowerCase();
+        const lowerStatus = String(status).toLowerCase(); // 确保是字符串
         // 优先匹配更具体的
         if (lowerStatus.includes('首发')) return 'status-release';
-        if (lowerStatus.includes('新游爆料')) return 'status-reveal'; // 注意 TapTap 可能有多种类似表述
+        if (lowerStatus.includes('新游爆料') || lowerStatus.includes('爆料')) return 'status-reveal'; // 扩展匹配
         if (lowerStatus.includes('上线') || lowerStatus.includes('公测')) return 'status-online';
         if (lowerStatus.includes('测试')) return 'status-testing';
         if (lowerStatus.includes('预约') || lowerStatus.includes('预订')) return 'status-preorder';
@@ -212,31 +203,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function truncateText(text, maxLength) {
         if (!text) return '';
+        text = String(text); // 确保是字符串
         if (text.length <= maxLength) return text;
         return text.substring(0, maxLength) + '...';
     }
 
-    // --- 填充状态过滤器 (确保使用 allGamesData) --- 
+    // --- 填充状态过滤器 (确保使用 allGamesData) ---
     function populateStatusFilter(games) { // 这个 games 参数现在代表 allGamesData
-        const currentSelectedValue = statusFilter.value; 
+        const currentSelectedValue = statusFilter.value;
         const statuses = new Set();
         games.forEach(game => {
-            if (game.status) {
-                statuses.add(game.status.trim());
+            // 确保 game.status 存在且不为空字符串
+            if (game.status && String(game.status).trim() !== '') {
+                statuses.add(String(game.status).trim());
             }
         });
 
-        statusFilter.innerHTML = '<option value="">所有状态</option>'; 
-        
-        const sortedStatuses = Array.from(statuses).sort(); 
-        
+        statusFilter.innerHTML = '<option value="">所有状态</option>';
+
+        const sortedStatuses = Array.from(statuses).sort();
+
         sortedStatuses.forEach(status => {
             const option = document.createElement('option');
             option.value = status;
             option.textContent = status;
             statusFilter.appendChild(option);
         });
-        
+
         // 尝试恢复之前的选中值 (如果存在于新列表中)
         if (Array.from(statuses).includes(currentSelectedValue)) {
             statusFilter.value = currentSelectedValue;
@@ -248,23 +241,43 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 更新UI以反映当前选择的页签 ---
     function updateUIForSection(section) {
         currentSection = section;
+        // 清理之前的激活状态
+        document.querySelectorAll('.navbar a.active').forEach(el => el.classList.remove('active'));
+        // 设置当前激活状态
+        const activeLink = document.querySelector(`.navbar a[data-section="${section}"]`);
+        if (activeLink) {
+            activeLink.classList.add('active');
+        }
+
 
         if (section === 'featured') {
             // 热门关注页签
-            topGamesSection.style.display = 'none'; // 隐藏重点关注模块
-            gamesTableTitle.textContent = '热门关注游戏列表';
-            featuredColumnHead.style.display = 'table-cell'; // 显示重点关注列
+            topGamesSection.style.display = 'none'; // 隐藏首页的重点关注模块
+            gamesTableTitle.textContent = '重点关注游戏列表'; // 修改标题
+            // 表格本身现在不需要特殊处理，因为不再有开关列
         } else {
             // 全部游戏页签
-            topGamesSection.style.display = 'block'; // 显示重点关注模块
+            topGamesSection.style.display = 'block'; // 显示首页的重点关注模块
             gamesTableTitle.textContent = '全部游戏列表';
-            featuredColumnHead.style.display = 'none'; // 隐藏重点关注列
+            // 表格本身也不需要特殊处理
         }
+         // 切换时重置筛选条件并重新加载
+        resetFilters();
+        currentPage = 1;
+        loadAllGames(); // 重新加载数据以匹配新 section
     }
+
+     // --- 重置筛选条件的辅助函数 ---
+    function resetFilters() {
+        searchInput.value = '';
+        statusFilter.value = '';
+        sourceFilter.value = '';
+    }
+
 
     // --- 加载全部游戏数据（带过滤和分页）---
     async function loadAllGames() {
-        const colspan = currentSection === 'featured' ? 7 : 6;
+        const colspan = 6; // 固定为 6 列
         allGamesTbody.innerHTML = `<tr><td colspan="${colspan}" class="loading-message">正在加载游戏列表...</td></tr>`;
         prevPageButton.disabled = true;
         nextPageButton.disabled = true;
@@ -275,26 +288,25 @@ document.addEventListener('DOMContentLoaded', () => {
             search: searchInput.value.trim(),
             status: statusFilter.value,
             source: sourceFilter.value,
+            // 新增：根据当前页签决定是否只看重点游戏
+            featured: currentSection === 'featured' ? 'true' : null // 使用 featured 参数
         };
-
-        // 根据当前页签添加特定筛选条件
-        if (currentSection === 'featured') {
-            // 热门关注页签 - 筛选评分不为0的项目
-            params.min_score = "0.1"; // 确保评分大于0
-        }
 
         const data = await fetchData('/games', params);
         if (data) {
             renderAllGames(data);
         } else {
-            renderAllGames(null);
+            // fetchData 内部已处理错误显示，这里可以留空或添加额外处理
+            // renderAllGames(null); // 避免重复渲染错误信息
+            updatePaginationControls(0, 1, 1); // 确保分页控件正确显示无数据状态
         }
     }
-    
+
     // --- 获取所有游戏数据（仅用于状态填充，在初始加载时调用一次）---
     async function fetchAllGamesForStatus() {
         console.log("Fetching all games data for status filter (once)... ");
-        const allData = await fetchData('/games', { per_page: 10000 });
+        // 请求所有数据，不分页，只为获取所有状态
+        const allData = await fetchData('/games', { per_page: 10000 }); // 获取足够多的数据
         if (allData && allData.games) {
             allGamesData = allData.games; // 存储完整数据
             populateStatusFilter(allGamesData); // 使用完整数据填充状态过滤器
@@ -303,58 +315,15 @@ document.addEventListener('DOMContentLoaded', () => {
             populateStatusFilter([]); // 即使失败也尝试清空并填充默认值
         }
     }
-    
-    // --- 加载重点游戏数据 ---
+
+    // --- 加载重点游戏数据 (现在直接从后端获取) ---
     async function loadFeaturedGames() {
         featuredGameList.innerHTML = '<p class="loading-message">正在加载重点游戏...</p>'; // 显示加载提示
-        
-        // 优先使用用户自选的重点游戏
-        if (userFeaturedGames.length > 0) {
-            // 获取所有游戏数据
-            const allGames = await fetchData('/games', { per_page: 1000 });
-            if (allGames && allGames.games) {
-                // 筛选出用户标记的重点游戏
-                const featuredGames = allGames.games.filter(game => {
-                    const gameId = game.id || `${game.name}-${game.publisher}`;
-                    return userFeaturedGames.includes(gameId);
-                });
-                
-                if (featuredGames.length > 0) {
-                    renderFeaturedGames(featuredGames);
-                    return;
-                }
-            }
-        }
-        
-        // 如果没有用户自选游戏或者获取失败，回退到厂商筛选逻辑
-        const allGames = await fetchData('/games', { per_page: 100 });
-        
-        if (!allGames || !allGames.games || allGames.games.length === 0) {
-            featuredGameList.innerHTML = '<p>未能获取游戏数据。</p>';
-            return;
-        }
-        
-        // 筛选重点游戏（根据厂商名称）
-        const featuredGames = allGames.games.filter(game => {
-            if (!game.publisher) return false;
-            
-            const publisher = game.publisher.toLowerCase();
-            return publisher.includes('腾讯') || 
-                   publisher.includes('tencent') || 
-                   publisher.includes('网易') || 
-                   publisher.includes('netease') || 
-                   publisher.includes('米哈游') || 
-                   publisher.includes('mihoyo') ||
-                   publisher.includes('hoyoverse');
-        });
-        
-        // 如果筛选后没有结果，尝试使用后端的 featured-games 接口
-        if (featuredGames.length === 0) {
-            const backendFeatured = await fetchData('/featured-games');
-            renderFeaturedGames(backendFeatured);
-        } else {
-            renderFeaturedGames(featuredGames);
-        }
+
+        // 直接请求 /api/featured-games
+        const featuredGames = await fetchData('/featured-games');
+
+        renderFeaturedGames(featuredGames); // 直接渲染从 API 获取的数据
     }
 
     // --- 事件监听器设置 ---
@@ -373,6 +342,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // 下拉框改变时也触发筛选 (可选，看是否需要实时筛选)
+        // statusFilter.addEventListener('change', () => {
+        //     currentPage = 1;
+        //     loadAllGames();
+        // });
+        // sourceFilter.addEventListener('change', () => {
+        //     currentPage = 1;
+        //     loadAllGames();
+        // });
+
+
         // 分页控件
         prevPageButton.addEventListener('click', () => {
             if (currentPage > 1) {
@@ -388,28 +368,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 导航切换
+        // 导航切换 (修改：切换时调用 updateUIForSection)
         document.querySelectorAll('.navbar a').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                document.querySelector('.navbar a.active').classList.remove('active');
-                e.target.classList.add('active');
-                
                 const section = e.target.getAttribute('data-section');
-                updateUIForSection(section);
-                currentPage = 1;
-                loadAllGames();
+                if (section !== currentSection) { // 只有在切换不同 section 时才执行
+                    updateUIForSection(section);
+                     // updateUIForSection 内部会重置过滤器并加载数据
+                }
             });
         });
     }
 
     // --- 初始化和启动 ---
     async function initialLoad() {
-        updateUIForSection('all'); // 设置初始UI状态
-        setupEventListeners(); // 设置所有事件监听器
-        loadFeaturedGames(); // 加载重点游戏
-        await fetchAllGamesForStatus(); // 先获取所有游戏数据并填充状态过滤器
-        loadAllGames();      // 然后加载第一页的全部游戏
+        // 默认加载 'all' 区块
+        const initialSection = 'all';
+        updateUIForSection(initialSection); // 设置初始UI状态 (这会加载数据)
+        setupEventListeners();        // 设置所有事件监听器
+        loadFeaturedGames();          // 加载首页的重点游戏卡片
+        await fetchAllGamesForStatus(); // 获取所有游戏数据并填充状态过滤器
+        // loadAllGames() 已经在 updateUIForSection 中调用，无需重复加载
     }
 
     initialLoad(); // 执行初始加载
