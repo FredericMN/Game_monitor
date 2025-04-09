@@ -286,9 +286,10 @@ def get_featured_games():
                 'link': primary_record.get('link'),
             }
 
-            # 提取最新的最多 5 条里程碑 (日期 + 状态)
+            # 提取最新的最多 5 条有效里程碑 (日期 + 状态，过滤掉"未知状态")
             milestones = []
-            for game_record in group[:5]: # 修改：取排序后的前 5 条
+            valid_records_for_milestones = [rec for rec in group if rec.get('status') != '未知状态']
+            for game_record in valid_records_for_milestones[:5]: # 从过滤后的记录中取前 5 条
                 if game_record.get('date') and game_record.get('status'):
                     milestones.append({
                         'date': str(game_record.get('date')),

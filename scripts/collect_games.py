@@ -516,54 +516,80 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 logging.info("--- 开始合并数据并处理重复项 ---")
                 # Note: existing_games_from_json and standardized_new_games already have flags applied
                 combined_games = list(locked_records.values()) + existing_games_from_json + standardized_new_games
-                logging.info(f"合并后共 {len(combined_games)} 条数据（已锁定+历史+新增）待去重。")
+                logging.info(f"合并后共 {len(combined_games)} 条数据（已锁定+历史+新增）待处理。")
+
+                # --- 修改：将上线冲突处理移到这里，在最终列表形成之后，保存之前 --- #
+                if temp_final_list: # 确保列表不为空
+                    logging.info("--- 开始处理最终列表中的上线日期冲突 --- ")
+                    final_games_grouped = {}
+                    for game in temp_final_list:
+                        name = game.get("name", "未知名称")
+                        if name not in final_games_grouped:
+                            final_games_grouped[name] = []
+                        final_games_grouped[name].append(game)
+
+                    conflict_resolved_count_final = 0
+                    processed_list_after_conflict = [] # 使用新列表存储处理结果
+
+                    for name, group in final_games_grouped.items():
+                        online_records = [g for g in group if g.get('status') == '上线']
+
+                        if len(online_records) > 1:
+                            logging.warning(f"游戏 '{name}' 存在多个上线日期冲突: {[g.get('date') for g in online_records]}")
+                            online_records.sort(key=lambda g: g.get('date', '0000-00-00'), reverse=True)
+
+                            latest_online_record = online_records[0]
+                            latest_online_record['manual_checked'] = "上线日期冲突-自动保留最新" # 强制标记最新
+                            conflict_resolved_count_final += 1
+
+                            # 强制修改所有旧的上线记录状态为"未知状态"
+                            for old_record in online_records[1:]:
+                                old_record['status'] = "未知状态"
+                                logging.info(f"  游戏 '{name}' 的旧上线记录 ({old_record.get('date')}) 因冲突被强制标记为未知状态。")
+
+                            # 将处理过的这组记录加入新列表
+                            processed_list_after_conflict.extend(group)
+                        else:
+                            # 没有冲突，直接将该组所有记录加入新列表
+                            processed_list_after_conflict.extend(group)
+
+                    if conflict_resolved_count_final > 0:
+                        logging.info(f"处理了 {conflict_resolved_count_final} 个游戏的上线日期冲突（强制标记最新）。")
+                        # 使用处理冲突后的列表进行后续排序和保存
+                        temp_final_list = processed_list_after_conflict # 替换原有列表
+                    else:
+                        logging.info("未发现上线日期冲突。")
+
+                # --- 继续去重逻辑 (使用 unique_milestones) --- #
                 unique_milestones = {}
                 duplicates_handled = 0
-                # Initialize with locked records
-                processed_keys = set(locked_records.keys())
+                processed_keys = set(locked_records.keys()) # 锁定记录优先保留
                 unique_milestones.update(locked_records)
 
                 # Process remaining (JSON history + new standardized)
                 for game in existing_games_from_json + standardized_new_games:
-                    # Use name from standardization/loading (already cleaned or from cleaned key)
-                    name = game.get("name", "未知名称") # Should be cleaned name from standardization
+                    name = game.get("name", "未知名称")
                     date = game.get("date", "0000-00-00")
                     key = (name, date)
-
-                    if key in processed_keys:
-                        # This record is either locked or already processed from the list
-                        # We might have handled duplicates between JSON and New already implicitly
-                        # by iterating through JSON first then New. Let's refine.
-                        continue # Skip if locked or already handled a non-locked version
-
-                    # Ensure manual_checked field exists (though it should for unlocked)
+                    if key in processed_keys: continue
                     game['manual_checked'] = game.get('manual_checked', '')
-
                     if key not in unique_milestones:
-                        # First time seeing this unlocked key in this combined list pass
                         unique_milestones[key] = game
                         processed_keys.add(key)
                     else:
-                        # Duplicate unlocked record found during this pass
-                        # (e.g. same key in existing_games_from_json and standardized_new_games)
                         duplicates_handled += 1
                         existing_game = unique_milestones[key]
-                        # Apply merge logic (TapTap > More complete)
-                        # Note: is_featured should already be correctly set based on Excel flag logic applied earlier
                         if game.get('source') == 'TapTap' and existing_game.get('source') != 'TapTap':
                             unique_milestones[key] = game
-                            logging.debug(f"重复(未锁定): {key} - TapTap优先, 保留新记录")
-                        # Refined completeness check to ignore None, '', False
                         elif sum(1 for v in game.values() if v not in [None, '', False]) > sum(1 for v in existing_game.values() if v not in [None, '', False]):
                              unique_milestones[key] = game
-                             logging.debug(f"重复(未锁定): {key} - 新记录更完整, 保留新记录")
-                        else:
-                             logging.debug(f"重复(未锁定): {key} - 保留原有记录")
 
-                temp_final_list = list(unique_milestones.values()) # Store in temp list
-                logging.info(f"处理重复项后剩余 {len(temp_final_list)} 条记录 (处理了 {duplicates_handled} 个重复项)。")
+                temp_final_list = list(unique_milestones.values())
+                logging.info(f"初步去重后剩余 {len(temp_final_list)} 条记录 (处理了 {duplicates_handled} 个重复项)。")
 
-        # --- Common steps within try block ---
+        # --- Common steps within try block (适用于两种模式) --- #
+
+        # --- 继续后续步骤 --- #
         if not temp_final_list:
              logging.warning("最终数据列表为空，无法进行排序。")
         else:
