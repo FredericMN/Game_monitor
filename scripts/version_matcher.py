@@ -15,6 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import collections # Add this import at the top
 
 # 并发工作线程数 (可以根据机器性能调整)
 MAX_MATCH_WORKERS = 5 # Adjusted for potentially longer individual queries
@@ -316,6 +317,118 @@ def worker_task(game_info, cache_dict):
         "update_data": update_data
     }
 
+def cleanup_version_cache(cache_file_path):
+    """
+    Cleans up the version match cache file by consolidating results per game name.
+
+    Rules:
+    - If only None results exist for a game, keep one None entry.
+    - If non-None results exist, keep only the unique non-None results (discard Nones).
+    - If multiple *different* non-None results exist (based on approval_num),
+      keep all unique non-None results and print a warning.
+    """
+    print(f"\n[缓存清理] 开始清理缓存文件: {cache_file_path}") # Add newline for better formatting
+    if not os.path.exists(cache_file_path):
+        print("[缓存清理] 缓存文件不存在，无需清理。")
+        return
+
+    grouped_results = collections.defaultdict(list)
+    raw_lines = []
+    try:
+        # Read all existing lines first
+        with cache_lock: # Use lock for reading as well to be safe
+             # Check if file is empty before reading
+             if os.path.getsize(cache_file_path) == 0:
+                 print("[缓存清理] 缓存文件为空，无需清理。")
+                 return
+             with open(cache_file_path, 'r', encoding='utf-8') as f:
+                 raw_lines = f.readlines()
+
+        # Parse lines and group results
+        for line in raw_lines:
+            line = line.strip()
+            if not line: continue
+            try:
+                data = json.loads(line)
+                if 'name' in data and 'result' in data:
+                    # Normalize name slightly for grouping? (e.g., lowercasing)
+                    # Let's keep it as is for now to respect original cache keys
+                    grouped_results[data['name']].append(data['result'])
+                else:
+                    print(f"[缓存清理警告] 跳过格式无效的行: {line}")
+            except json.JSONDecodeError:
+                print(f"[缓存清理警告] 跳过无法解析JSON的行: {line}")
+
+    except FileNotFoundError:
+         print("[缓存清理] 缓存文件在读取过程中消失，跳过清理。")
+         return
+    except Exception as e:
+        print(f"[缓存清理错误] 读取或解析缓存文件时出错: {e}")
+        print("[缓存清理] 由于读取错误，将中止清理过程以避免数据丢失。")
+        return # Abort cleanup if reading failed
+
+    if not grouped_results:
+        print("[缓存清理] 未从缓存文件中解析出有效数据，无需清理。")
+        return
+
+    cleaned_cache_entries = []
+    multiple_results_warnings = 0
+
+    for name, results_list in grouped_results.items():
+        non_none_results = [r for r in results_list if r is not None]
+        unique_non_none_results = []
+        seen_keys = set() # Use a generic 'seen keys' set
+
+        if non_none_results:
+            # Filter unique non-None results
+            for result in non_none_results:
+                 # Define a unique key for this result. Use approval_num if present, otherwise hash the dict items.
+                 approval_num = result.get('approval_num')
+                 # Use approval_num as primary key if it exists and is not empty
+                 if approval_num and str(approval_num).strip():
+                     result_key = str(approval_num).strip()
+                 else:
+                    # Fallback: create a hashable representation of the dictionary content for uniqueness check
+                    # Sort items to ensure consistent hashing regardless of dict order
+                    try:
+                       result_key = frozenset(sorted(result.items()))
+                    except TypeError:
+                       # Handle unhashable types within the dict if necessary
+                       # For simplicity, treat results with unhashable types as unique for now
+                       result_key = id(result) # Fallback to object ID (less reliable for true content uniqueness)
+                       print(f"[缓存清理警告] 游戏 '{name}' 的结果包含无法哈希的类型，将基于对象ID判断唯一性。")
+
+
+                 if result_key not in seen_keys:
+                     unique_non_none_results.append(result)
+                     seen_keys.add(result_key)
+
+
+            if len(unique_non_none_results) > 1:
+                print(f"[缓存清理警告] 游戏 '{name}' 发现 {len(unique_non_none_results)} 个不同的版号结果，将全部保留。")
+                multiple_results_warnings +=1
+
+            # Keep all unique non-None results
+            for res in unique_non_none_results:
+                cleaned_cache_entries.append({"name": name, "result": res})
+        else:
+            # Only None results existed, keep one None entry
+            cleaned_cache_entries.append({"name": name, "result": None})
+
+    # Write cleaned results back, overwriting the file
+    try:
+        with cache_lock: # Ensure exclusive write access
+            with open(cache_file_path, 'w', encoding='utf-8') as f:
+                for entry in cleaned_cache_entries:
+                    json.dump(entry, f, ensure_ascii=False)
+                    f.write('
+')
+        print(f"[缓存清理] 清理完成。处理了 {len(grouped_results)} 个游戏名称，最终保留 {len(cleaned_cache_entries)} 条缓存记录。")
+        if multiple_results_warnings > 0:
+            print(f"[缓存清理] 共发现 {multiple_results_warnings} 个游戏存在多个不同版号。")
+    except Exception as e:
+        print(f"[缓存清理错误] 写入清理后的缓存时出错: {e}")
+
 
 def match_version_numbers_for_games(games_list):
     """
@@ -381,6 +494,14 @@ def match_version_numbers_for_games(games_list):
                 print(f"\n[版号匹配] 处理游戏 '{failed_game_name}' (索引 {original_index}) 时线程出错: {e}")
 
     print(f"\n[版号匹配] 批量匹配完成，耗时: {time.time() - start_time:.2f} 秒。")
+
+    # --- 新增: 任务结束后清理缓存 --- #
+    try:
+        cleanup_version_cache(CACHE_FILE)
+    except Exception as cleanup_e:
+         print(f"\n[缓存清理错误] 调用缓存清理函数时发生意外错误: {cleanup_e}")
+    # --- 结束缓存清理调用 --- #
+
     return games_list
 
 # --- 主程序入口 (用于测试) --- #

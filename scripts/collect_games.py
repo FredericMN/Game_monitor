@@ -230,7 +230,9 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 filtered_games_to_process = []
                 removed_appstore_hist_count = 0
                 # Define major publisher keywords (lowercase)
-                major_publisher_keywords = {'ltd', '腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo'}
+                major_publisher_keywords = {'ltd', '腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo', 'lingxi'}
+                # Define blocked publishers (lowercase)
+                blocked_publishers = {'big kid gaming studio (private) limited', 'ms zeroloft games'}
 
                 for game in games_to_process:
                     key = (game.get('cleaned_name'), game.get('date', '0000-00-00'))
@@ -242,6 +244,13 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                     original_name = game.get('name', '')
                     cleaned_name = game.get('cleaned_name', '')
                     publisher_lower = game.get('publisher', '').lower()
+
+                    # --- 新增: 检查是否为阻止的发行商 ---
+                    if publisher_lower in blocked_publishers:
+                        logging.info(f"  过滤历史记录 (阻止的发行商): '{original_name}' [发行: {game.get('publisher')}]")
+                        removed_appstore_hist_count += 1 # 计数也包含在此
+                        continue # 直接跳过此游戏
+                    # --- 结束阻止发行商检查 ---
 
                     is_appstore = (source == 'appstore')
                     too_many_spaces = original_name.count(' ') >= 2
@@ -334,13 +343,22 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 filtered_new_games = []
                 removed_appstore_count = 0
                 # Define major publisher keywords (lowercase)
-                major_publisher_keywords = {'ltd', '腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo'}
+                major_publisher_keywords = {'ltd', '腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo', 'lingxi'}
+                # Define blocked publishers (lowercase)
+                blocked_publishers = {'big kid gaming studio (private) limited', 'ms zeroloft games'}
 
                 for game in newly_fetched_games:
                     source = game.get('source', '').lower() # 检查来源，忽略大小写
                     original_name = game.get('name', '')
                     cleaned_name = game.get('cleaned_name', '') # 使用已清洗的名称
                     publisher_lower = game.get('publisher', '').lower()
+
+                    # --- 新增: 检查是否为阻止的发行商 ---
+                    if publisher_lower in blocked_publishers:
+                        logging.info(f"  过滤新记录 (阻止的发行商): '{original_name}' [发行: {game.get('publisher')}]")
+                        removed_appstore_count += 1 # 计数也包含在此
+                        continue # 直接跳过此游戏
+                    # --- 结束阻止发行商检查 ---
 
                     is_appstore = (source == 'appstore')
 
