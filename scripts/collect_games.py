@@ -146,8 +146,9 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
         excel_columns_map = get_excel_columns()
         internal_excel_fields = list(excel_columns_map.values())
 
-        # 0. Read Excel for locked records
+        # 0. Read Excel for locked records AND feature flags
         locked_records = {}
+        excel_feature_flags = {} # Store (name, date) -> is_featured status from Excel
         if os.path.exists(master_excel_file):
             try:
                 logging.info(f"读取主 Excel 文件: {master_excel_file}")
@@ -155,42 +156,59 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 excel_rename_map_reverse = {v: k for k, v in excel_columns_map.items()}
                 df_excel.rename(columns=lambda c: excel_rename_map_reverse.get(c, c), inplace=True)
 
-                if 'manual_checked' in df_excel.columns:
-                    # Convert relevant columns back to expected types after reading as string
-                    df_excel['rating'] = pd.to_numeric(df_excel['rating'], errors='coerce').fillna(0.0)
-                    for bool_col in ['is_featured', 'version_checked']:
-                         if bool_col in df_excel.columns:
-                             df_excel[bool_col] = df_excel[bool_col].apply(lambda x: True if str(x).strip().lower() == '是' else False)
+                # Convert relevant columns back to expected types after reading as string
+                if 'rating' in df_excel.columns: df_excel['rating'] = pd.to_numeric(df_excel['rating'], errors='coerce').fillna(0.0)
+                # Explicitly handle boolean conversion for is_featured and version_checked for *all* records initially
+                is_featured_col_present = 'is_featured' in df_excel.columns
+                version_checked_col_present = 'version_checked' in df_excel.columns
+                manual_checked_col_present = 'manual_checked' in df_excel.columns
 
-                    checked_df = df_excel[df_excel['manual_checked'].notna() & df_excel['manual_checked'].ne('') & df_excel['manual_checked'].astype(str).str.strip().ne('')]
-                    checked_records_list = checked_df.to_dict('records')
+                excel_records_list = df_excel.to_dict('records')
 
-                    for record in checked_records_list:
-                        name = clean_game_name(record.get('name'))
-                        date_raw = record.get('date')
-                        if isinstance(date_raw, datetime): date_str = date_raw.strftime('%Y-%m-%d')
-                        elif isinstance(date_raw, str):
-                            try: date_str = pd.to_datetime(date_raw).strftime('%Y-%m-%d')
-                            except: date_str = date_raw; logging.warning(f"无法标准化Excel日期: {date_raw}")
-                        else: date_str = "0000-00-00"
-                        key = (name, date_str)
-                        # Ensure record has all fields, converting types where needed
+                for record in excel_records_list:
+                    name = clean_game_name(record.get('name'))
+                    date_raw = record.get('date')
+                    if isinstance(date_raw, datetime): date_str = date_raw.strftime('%Y-%m-%d')
+                    elif isinstance(date_raw, str):
+                        try: date_str = pd.to_datetime(date_raw).strftime('%Y-%m-%d')
+                        except: date_str = date_raw; logging.warning(f"无法标准化Excel日期: {date_raw} for game {name}")
+                    else: date_str = "0000-00-00" # Should ideally not happen if read as string
+                    key = (name, date_str)
+
+                    # --- Check and store 'is_featured' flag for ALL records ---
+                    is_featured_excel = False
+                    if is_featured_col_present:
+                        is_featured_raw = record.get('is_featured', '')
+                        is_featured_excel = str(is_featured_raw).strip().lower() == '是'
+                    excel_feature_flags[key] = is_featured_excel
+                    # --- End feature flag check ---
+
+                    # --- Check manual checked status ---
+                    is_manually_checked = False
+                    if manual_checked_col_present:
+                        manual_checked_raw = record.get('manual_checked', '')
+                        is_manually_checked = str(manual_checked_raw).strip() != ''
+                    # --- End manual check ---
+
+                    if is_manually_checked:
+                        # Ensure record has all fields, converting types where needed for locked record
                         full_record = {}
                         for field in internal_excel_fields:
                             value = record.get(field)
                             if field == 'rating': full_record[field] = float(value) if value is not None else 0.0
-                            elif field in ['is_featured', 'version_checked']: full_record[field] = bool(value) if value is not None else False
+                            elif field == 'is_featured': full_record[field] = is_featured_excel # Use parsed boolean
+                            elif field == 'version_checked': full_record[field] = bool(str(record.get('version_checked', '')).strip().lower() == '是') if version_checked_col_present else False
                             elif field == 'manual_checked': full_record[field] = str(value).strip() if value is not None else "" # Keep as string
                             else: full_record[field] = str(value).strip() if value is not None else "" # Default to string
                         full_record['name'] = name # Use cleaned name
                         full_record['date'] = date_str # Use standardized date
                         locked_records[key] = full_record
-                    logging.info(f"从主 Excel 加载了 {len(locked_records)} 条人工校对过的记录。")
-                else:
-                    logging.warning(f"主 Excel 文件 {master_excel_file} 中缺少 '是否人工校对' 列，无法加载锁定状态。")
+
+                logging.info(f"从主 Excel 加载了 {len(locked_records)} 条人工校对记录，并记录了 {len(excel_feature_flags)} 条记录的重点状态。")
+
             except Exception as e:
                 logging.error(f"读取或处理主 Excel 文件 ({master_excel_file}) 时出错: {e}", exc_info=True)
-                # Allow continuing without locked records, but log error
+                # Allow continuing without locked records/flags, but log error
         else:
             logging.info(f"主 Excel 文件 {master_excel_file} 不存在，将创建新文件。")
 
@@ -207,8 +225,13 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                         if key not in locked_records:
                             # Ensure manual_checked field exists
                             game['manual_checked'] = game.get('manual_checked', '')
+                            # --- Apply Excel feature flag if present ---
+                            if excel_feature_flags.get(key, False):
+                                game['is_featured'] = True
+                                logging.debug(f"从Excel更新历史记录 {key} 的重点状态为 True")
+                            # --- End feature flag apply ---
                             existing_games_from_json.append(game)
-                logging.info(f"成功从 {master_json_file} 加载 {len(existing_games_from_json)} 条未被锁定的历史数据。")
+                logging.info(f"成功从 {master_json_file} 加载 {len(existing_games_from_json)} 条未被锁定的历史数据 (已应用Excel重点状态)。")
             except Exception as e:
                 logging.error(f"加载或处理历史 JSON 数据 ({master_json_file}) 时出错: {e}") # Log error, continue
         else:
@@ -218,6 +241,7 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
         temp_final_list = [] # Store results of processing within try block
         if process_history_only:
             logging.info("模式: 只处理历史数据。跳过新数据爬取。")
+            # Note: existing_games_from_json already has Excel flags applied
             games_to_process = list(locked_records.values()) + existing_games_from_json
             if not games_to_process:
                  logging.warning("历史数据为空，无法进行处理。")
@@ -235,14 +259,17 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 blocked_publishers = {'big kid gaming studio (private) limited', 'ms zeroloft games'}
 
                 for game in games_to_process:
-                    key = (game.get('cleaned_name'), game.get('date', '0000-00-00'))
+                    # Use cleaned_name for key checking if available, otherwise clean the original name
+                    cleaned_name_val = game.get('cleaned_name') or clean_game_name(game.get('name'))
+                    date_val = game.get('date', '0000-00-00')
+                    key = (cleaned_name_val, date_val)
                     if key in locked_records:
                         filtered_games_to_process.append(game)
                         continue
 
                     source = game.get('source', '').lower()
                     original_name = game.get('name', '')
-                    cleaned_name = game.get('cleaned_name', '')
+                    # cleaned_name = game.get('cleaned_name', '') # Already got cleaned_name_val
                     publisher_lower = game.get('publisher', '').lower()
 
                     # --- 新增: 检查是否为阻止的发行商 ---
@@ -254,7 +281,7 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
 
                     is_appstore = (source == 'appstore')
                     too_many_spaces = original_name.count(' ') >= 2
-                    too_long = len(cleaned_name) > 10
+                    too_long = len(cleaned_name_val) > 10 # Use cleaned name here
 
                     # Check if publisher is considered major
                     is_major_publisher = any(keyword in publisher_lower for keyword in major_publisher_keywords)
@@ -269,15 +296,36 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 logging.info(f"历史数据 AppStore 过滤完成，移除了 {removed_appstore_hist_count} 条记录。")
                 # --- 结束 AppStore 过滤 ---
 
-                # Derieve unlocked_history_games from the *filtered* list
-                unlocked_history_games = [g for g in filtered_games_to_process if (g.get('cleaned_name'), g.get('date', '0000-00-00')) not in locked_records]
+                # Derive unlocked_history_games from the *filtered* list, ensuring cleaned_name exists for key lookup
+                unlocked_history_games = []
+                for g in filtered_games_to_process:
+                    cleaned_name_val = g.get('cleaned_name') or clean_game_name(g.get('name'))
+                    # Ensure cleaned_name is actually in the dict for later use
+                    if 'cleaned_name' not in g: g['cleaned_name'] = cleaned_name_val
+                    date_val = g.get('date', '0000-00-00')
+                    key = (cleaned_name_val, date_val)
+                    if key not in locked_records:
+                        unlocked_history_games.append(g)
+
 
                 if match_versions_func and unlocked_history_games:
                     logging.info(f"--- 开始对 {len(unlocked_history_games)} 条未锁定历史数据进行版号匹配 ---")
                     try:
                          # Add index for reliable update during version matching
                          for i, game in enumerate(unlocked_history_games): game['_original_index'] = i # Use consistent index key
-                         match_versions_func(unlocked_history_games) # Modifies in place
+                         # Prepare data for matcher - use cleaned name
+                         games_for_matcher = [{"name": g.get('cleaned_name'), "_original_index": g.get('_original_index')} for g in unlocked_history_games]
+                         match_versions_func(games_for_matcher) # Modifies games_for_matcher in place
+
+                         # Merge results back based on index
+                         for matched_info in games_for_matcher:
+                             orig_idx = matched_info.get("_original_index", -1)
+                             target_game = next((g for g in unlocked_history_games if g.get('_original_index') == orig_idx), None)
+                             if target_game:
+                                 update_data = {k: v for k, v in matched_info.items() if k not in ['name', '_original_index']}
+                                 target_game.update(update_data)
+                                 target_game['version_checked'] = True # Mark as checked
+
                          logging.info("历史数据版号匹配完成。")
                     except Exception as e: logging.error(f"历史数据版号匹配过程中出错: {e}", exc_info=True) # Log, don't raise
                 elif not match_versions_func: logging.warning("版号匹配模块未导入，跳过历史数据匹配。")
@@ -286,7 +334,13 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 # Combine locked records with the (potentially version-matched) filtered unlocked history
                 final_processed_list = list(locked_records.values()) + unlocked_history_games
                 logging.info("--- 开始标准化最终历史数据 ---")
+                # Need to standardize AFTER potential version matching which might add fields
                 temp_final_list = standardize_game_data(final_processed_list, excel_columns_map)
+                # Re-apply excel feature flags after standardization if necessary (although history should have it)
+                for game_final in temp_final_list:
+                    key = (game_final.get('name'), game_final.get('date'))
+                    if key not in locked_records and excel_feature_flags.get(key, False):
+                        game_final['is_featured'] = True
                 logging.info(f"完成 {len(temp_final_list)} 条历史数据的标准化。")
 
         else: # Fetch new data mode
@@ -415,35 +469,66 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 if newly_fetched_games:
                     try:
                         standardized_new_games = standardize_game_data(newly_fetched_games, excel_columns_map)
-                        logging.info(f"完成 {len(standardized_new_games)} 条新数据的标准化。")
+                        # --- Apply Excel feature flag to standardized new data ---
+                        for std_game in standardized_new_games:
+                            key = (std_game['name'], std_game['date'])
+                            if key not in locked_records and excel_feature_flags.get(key, False):
+                                std_game['is_featured'] = True
+                                logging.debug(f"从Excel更新新标准化记录 {key} 的重点状态为 True")
+                        # --- End feature flag apply ---
+                        logging.info(f"完成 {len(standardized_new_games)} 条新数据的标准化 (已应用Excel重点状态)。")
                     except Exception as e:
-                        logging.error(f"新数据标准化过程中出错: {e}", exc_info=True)
+                        logging.error(f"新数据标准化或应用Excel重点状态过程中出错: {e}", exc_info=True)
                         raise # Critical error
 
                 # 6. Merge & Deduplicate
                 logging.info("--- 开始合并数据并处理重复项 ---")
+                # Note: existing_games_from_json and standardized_new_games already have flags applied
                 combined_games = list(locked_records.values()) + existing_games_from_json + standardized_new_games
                 logging.info(f"合并后共 {len(combined_games)} 条数据（已锁定+历史+新增）待去重。")
                 unique_milestones = {}
                 duplicates_handled = 0
+                # Initialize with locked records
                 processed_keys = set(locked_records.keys())
                 unique_milestones.update(locked_records)
 
+                # Process remaining (JSON history + new standardized)
                 for game in existing_games_from_json + standardized_new_games:
-                    # Use name from standardization (already cleaned)
-                    name = game.get("name", "未知名称")
+                    # Use name from standardization/loading (already cleaned or from cleaned key)
+                    name = game.get("name", "未知名称") # Should be cleaned name from standardization
                     date = game.get("date", "0000-00-00")
                     key = (name, date)
-                    if key in processed_keys: duplicates_handled += 1; continue
-                    # Ensure manual_checked field exists
+
+                    if key in processed_keys:
+                        # This record is either locked or already processed from the list
+                        # We might have handled duplicates between JSON and New already implicitly
+                        # by iterating through JSON first then New. Let's refine.
+                        continue # Skip if locked or already handled a non-locked version
+
+                    # Ensure manual_checked field exists (though it should for unlocked)
                     game['manual_checked'] = game.get('manual_checked', '')
+
                     if key not in unique_milestones:
-                        unique_milestones[key] = game; processed_keys.add(key)
+                        # First time seeing this unlocked key in this combined list pass
+                        unique_milestones[key] = game
+                        processed_keys.add(key)
                     else:
-                        duplicates_handled += 1; existing_game = unique_milestones[key]
-                        if game.get('source') == 'TapTap' and existing_game.get('source') != 'TapTap': unique_milestones[key] = game; logging.debug(f"重复(未锁定):{key}-TapTap优先")
-                        elif sum(1 for v in game.values() if v) > sum(1 for v in existing_game.values() if v): unique_milestones[key] = game; logging.debug(f"重复(未锁定):{key}-新记录更完整")
-                        else: logging.debug(f"重复(未锁定):{key}-保留原有")
+                        # Duplicate unlocked record found during this pass
+                        # (e.g. same key in existing_games_from_json and standardized_new_games)
+                        duplicates_handled += 1
+                        existing_game = unique_milestones[key]
+                        # Apply merge logic (TapTap > More complete)
+                        # Note: is_featured should already be correctly set based on Excel flag logic applied earlier
+                        if game.get('source') == 'TapTap' and existing_game.get('source') != 'TapTap':
+                            unique_milestones[key] = game
+                            logging.debug(f"重复(未锁定): {key} - TapTap优先, 保留新记录")
+                        # Refined completeness check to ignore None, '', False
+                        elif sum(1 for v in game.values() if v not in [None, '', False]) > sum(1 for v in existing_game.values() if v not in [None, '', False]):
+                             unique_milestones[key] = game
+                             logging.debug(f"重复(未锁定): {key} - 新记录更完整, 保留新记录")
+                        else:
+                             logging.debug(f"重复(未锁定): {key} - 保留原有记录")
+
                 temp_final_list = list(unique_milestones.values()) # Store in temp list
                 logging.info(f"处理重复项后剩余 {len(temp_final_list)} 条记录 (处理了 {duplicates_handled} 个重复项)。")
 
@@ -477,11 +562,29 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 df_final = pd.DataFrame(final_games_list_unprocessed)
                 cols_map = get_excel_columns()
                 internal_fields = list(cols_map.values())
-                cols_to_export = [col for col in internal_fields if col in df_final.columns]
+
+                # Ensure all expected columns exist in the DataFrame, adding empty ones if needed
+                for field in internal_fields:
+                    if field not in df_final.columns:
+                        if field == 'rating': df_final[field] = 0.0
+                        elif field in ['is_featured', 'version_checked']: df_final[field] = False
+                        else: df_final[field] = '' # Default to empty string for others
+
+                cols_to_export = [col for col in internal_fields if col in df_final.columns] # Select in desired order
                 df_final_excel = df_final[cols_to_export].copy()
-                for col in ['manual_checked', 'version_checked', 'is_featured']:
+
+                # Convert boolean fields back to '是'/'' for Excel output
+                for col in ['is_featured', 'version_checked']: # Removed manual_checked as it should remain string
                     if col in df_final_excel.columns:
-                         df_final_excel[col] = df_final_excel[col].apply(lambda x: '是' if x is True or str(x).strip().lower() == '是' else '')
+                        # Apply conversion carefully, handling potential non-boolean values if any slipped through
+                         df_final_excel[col] = df_final_excel[col].apply(
+                             lambda x: '是' if x is True or str(x).strip().lower() in ['true', '是', 'yes', '1'] else ''
+                         )
+                # Ensure manual_checked remains string (it should be already)
+                if 'manual_checked' in df_final_excel.columns:
+                     df_final_excel['manual_checked'] = df_final_excel['manual_checked'].astype(str).fillna('')
+
+
                 df_final_excel.rename(columns={v: k for k, v in cols_map.items()}, inplace=True)
                 df_final_excel.to_excel(master_excel_file, index=False, engine='openpyxl')
                 logging.info(f"最终数据已覆盖保存到 Excel: {master_excel_file}")
@@ -518,10 +621,11 @@ def main():
         print("\n请选择爬取范围:")
         print("1: TapTap 和 16p 都爬取")
         print("2: 只爬取 TapTap")
+        print("3: 只爬取 16p") # Added option 3
         fetch_choice = ""
-        while fetch_choice not in ['1', '2']: fetch_choice = input("请输入选项 (1 或 2): ").strip()
+        while fetch_choice not in ['1', '2', '3']: fetch_choice = input("请输入选项 (1, 2 或 3): ").strip() # Updated prompt
         fetch_taptap = (fetch_choice == '1' or fetch_choice == '2')
-        fetch_16p = (fetch_choice == '1')
+        fetch_16p = (fetch_choice == '1' or fetch_choice == '3') # Updated logic
         if not fetch_taptap_func and fetch_taptap: logging.warning("TapTap 模块未加载，无法爬取。"); fetch_taptap = False
         if not fetch_16p_func and fetch_16p: logging.warning("16p 模块未加载，无法爬取。"); fetch_16p = False
         if not fetch_taptap and not fetch_16p: logging.error("没有可用的爬虫模块或未选择任何源。"); sys.exit(1)
