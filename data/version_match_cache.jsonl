@@ -104,7 +104,7 @@
 {"name": "桃源记2", "result": {"nppa_name": "桃源记2", "publisher_unit": "厦门大学电子出版社有限责任公司", "operator_unit": "厦门二维塔网络科技有限公司", "approval_num": "国新出审〔2024〕1510号", "publication_num": "ISBN 978-7-498-13769-2", "approval_date": "2024-07-22", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "复苏的猫之大陆", "result": {"nppa_name": "复苏的猫之大陆", "publisher_unit": "上海文艺音像电子出版社有限公司", "operator_unit": "上海鸣勃网络科技有限公司", "approval_num": "国新出审〔2023〕1786号", "publication_num": "ISBN 978-7-498-12745-7", "approval_date": "2023-10-25", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "龙息：神寂", "result": {"nppa_name": "龙息：神寂", "publisher_unit": "浙江出版集团数字传媒有限公司", "operator_unit": "上海傲爵数码科技有限公司", "approval_num": "国新出审〔2024〕201号", "publication_num": "ISBN 978-7-498-13072-3", "approval_date": "2024-01-25", "game_type_version": "国产网络游戏", "declaration_category": "移动、客户端", "multiple_results": "否"}}
-{"name": "萌灵传说", "result": null}
+{"name": "萌灵传说", "result": {"nppa_name": "萌灵传说", "publisher_unit": "炫彩互动网络科技有限公司", "operator_unit": "上海七味网络科技有限公司", "approval_num": "国新出审〔2024〕416号", "publication_num": "ISBN 978-7-498-13228-4", "approval_date": "2024-02-26", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "群星纪元", "result": {"nppa_name": "群星纪元", "publisher_unit": "上海科学技术文献出版社有限公司", "operator_unit": "上海艮洲网络科技有限公司", "approval_num": "国新出审〔2024〕1075号", "publication_num": "ISBN 978-7-498-13546-9", "approval_date": "2024-05-17", "game_type_version": "国产网络游戏", "declaration_category": "移动、客户端", "multiple_results": "否"}}
 {"name": "勇者的命运", "result": {"nppa_name": "勇者的命运", "publisher_unit": "杭州渡口网络科技有限公司", "operator_unit": "合肥常春藤移动科技有限公司", "approval_num": "国新出审〔2024〕228号", "publication_num": "ISBN 978-7-498-13099-0", "approval_date": "2024-01-25", "game_type_version": "国产网络游戏", "declaration_category": "移动-休闲益智", "multiple_results": "否"}}
 {"name": "封神：开天", "result": {"nppa_name": "封神：开天", "publisher_unit": "上海文艺音像电子出版社有限公司", "operator_unit": "上海勉游网络科技有限公司", "approval_num": "国新出审〔2024〕1461号", "publication_num": "ISBN 978-7-498-13720-3", "approval_date": "2024-07-22", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
@@ -129,34 +129,11 @@
 {"name": "功夫英雄", "result": {"nppa_name": "功夫英雄", "publisher_unit": "上海大承网络技术有限公司", "operator_unit": "上海大承网络技术有限公司", "approval_num": "科技与数字[2011]355号", "publication_num": "", "approval_date": "2011-09-05", "game_type_version": "国产网络游戏", "declaration_category": "原", "multiple_results": "否"}}
 {"name": "梦的第七章", "result": {"nppa_name": "梦的第七章", "publisher_unit": "上海商国网络科技发展有限公司", "operator_unit": "上海昙时网络科技有限公司", "approval_num": "国新出审〔2023〕2000号", "publication_num": "ISBN 978-7-498-12782-2", "approval_date": "2023-11-30", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "天上白玉京", "result": {"nppa_name": "天上白玉京", "publisher_unit": "辽宁电子出版社有限责任公司", "operator_unit": "沈阳星空互娱网络科技有限公司", "approval_num": "国新出审[2021]434号", "publication_num": "ISBN 978-7-498-08854-3", "approval_date": "2021-03-04", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
-{"name": "山鬼志：寒衣", "result": null}
 {"name": "一念山海", "result": {"nppa_name": "一念山海", "publisher_unit": "吉林音像出版社有限责任公司", "operator_unit": "海南九悦互娱信息科技有限公司", "approval_num": "国新出审〔2024〕2003号", "publication_num": "ISBN 978-7-498-14032-6", "approval_date": "2024-09-27", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "盗墓笔记：启程", "result": {"nppa_name": "盗墓笔记：启程", "publisher_unit": "上海恺英网络科技有限公司", "operator_unit": "上海悦腾网络科技有限公司", "approval_num": "国新出审〔2024〕811号", "publication_num": "ISBN 978-7-498-13409-7", "approval_date": "2024-04-22", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "代号：奇与骑士", "result": null}
 {"name": "破日开天", "result": {"nppa_name": "破日开天", "publisher_unit": "上海雪鲤鱼计算机科技有限公司", "operator_unit": "深圳市鲸旗天下网络科技有限公司", "approval_num": "新广出审[2017]8986号", "publication_num": "", "approval_date": "2017-10-23", "game_type_version": "国产网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
-{"name": "代号：足球重启", "result": null}
 {"name": "永不言弃：镜世界", "result": {"nppa_name": "永不言弃：镜世界", "publisher_unit": "炫彩互动网络科技有限公司", "operator_unit": "重庆邦邦科技有限公司", "approval_num": "国新出审〔2025〕189号", "publication_num": "ISBN 978-7-498-14572-7", "approval_date": "2025-01-20", "game_type_version": "进口网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
 {"name": "悟空传说2048", "result": null}
 {"name": "明日方舟", "result": {"nppa_name": "明日方舟：终末地", "publisher_unit": "上海交通大学电子音像出版社有限公司", "operator_unit": "上海鹰角塔罗斯网络科技有限公司", "approval_num": "国新出审〔2024〕1795号", "publication_num": "ISBN 978-7-498-13884-2", "approval_date": "2024-08-30", "game_type_version": "国产网络游戏", "declaration_category": "移动、客户端、游戏机（PS5）游戏", "multiple_results": "是"}}
 {"name": "永不言弃：掉落", "result": {"nppa_name": "永不言弃：掉落", "publisher_unit": "炫彩互动网络科技有限公司", "operator_unit": "重庆邦邦科技有限公司", "approval_num": "国新出审〔2024〕2227号", "publication_num": "ISBN 978-7-498-14176-7", "approval_date": "2024-10-25", "game_type_version": "进口网络游戏", "declaration_category": "移动", "multiple_results": "否"}}
-{"name": "一乐乐游报", "result": null}
-{"name": "决胜之心福利版", "result": null}
-{"name": "Hero激斗：神龙觉醒", "result": null}
-{"name": "大唐无双:名将传", "result": null}
-{"name": "塔防群雄传", "result": null}
-{"name": "九品芝麻官", "result": null}
-{"name": "剑侠情缘·零", "result": null}
-{"name": "奥特曼系列:对决", "result": null}
-{"name": "我叫曹贼", "result": null}
-{"name": "风味烧烤摊", "result": null}
-{"name": "一趣研游社", "result": null}
-{"name": "我本少女", "result": null}
-{"name": "多体系修炼器", "result": null}
-{"name": "街漓芳传", "result": null}
-{"name": "杀青", "result": null}
-{"name": "永恒觉醒：职业分支流派觉醒", "result": null}
-{"name": "萌灵传说", "result": null}
-{"name": "代号：足球重启", "result": null}
-{"name": "山鬼志：寒衣", "result": null}
-{"name": "代号：奇与骑士", "result": null}
-{"name": "悟空传说2048", "result": null}
