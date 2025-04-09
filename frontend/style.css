@@ -143,10 +143,15 @@ body {
 }
 
 .styled-table thead th {
-    text-align: center; /* Center header text */
+    text-align: center; /* Center header text by default */
     padding: 12px 15px; /* Restore padding if needed */
     background-color: #009879;
     color: #ffffff;
+}
+
+/* Ensure the description column header is centered */
+.styled-table thead th.description-column {
+    text-align: center;
 }
 
 .styled-table th,
@@ -328,9 +333,9 @@ body {
     font-size: 0.9em; /* 稍微小一点的字体 */
 }
 
-/* 给简介单元格添加左对齐 */
-.styled-table .description-cell {
-    text-align: left;
+/* Keep description content cells left-aligned */
+.styled-table td.description-cell {
+    text-align: left; /* Ensure content is left-aligned */
     font-size: 0.8em;
     color: #666;
     max-width: 250px; /* 限制最大宽度 */
