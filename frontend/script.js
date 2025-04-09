@@ -21,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const perPage = 15; // 每页显示数量，与后端一致
 
     let allGamesData = []; // 变量用于存储从后端获取的所有游戏数据 (用于填充过滤器)
-    let currentSection = 'all'; // 当前激活的页签，默认为全部游戏
 
     // --- 数据获取函数 ---
     async function fetchData(endpoint, params = {}) {
@@ -61,35 +60,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 渲染函数 ---
+    // --- 渲染函数 (修改 focus 模块) ---
     function renderFeaturedGames(games) {
         featuredGameList.innerHTML = ''; // 清空加载提示
         if (!games || games.length === 0) {
             featuredGameList.innerHTML = '<p>暂无重点关注游戏。</p>';
             return;
         }
-        // 最多显示 16 个 (可以在后端限制，前端也做一层保护)
+        // games 现在是合并后的数据结构
         games.slice(0, 16).forEach(game => {
             const card = document.createElement('div');
-            card.className = 'game-card featured-card'; // 保持类名一致
+            card.className = 'game-card featured-card';
 
             let iconHtml = '';
-            // 确保 game.icon_url 存在且不为空
             if (game.icon_url && String(game.icon_url).trim() !== '') {
                 const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
-                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="featured-icon" loading="lazy">`; // 添加 lazy loading
+                iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="featured-icon" loading="lazy">`;
             } else {
-                iconHtml = '<div class="featured-icon placeholder-icon">无图</div>'; // 添加占位符样式
+                iconHtml = '<div class="featured-icon placeholder-icon">无图</div>';
             }
 
+            // 构建里程碑 HTML
+            let milestonesHtml = '';
+            if (game.milestones && game.milestones.length > 0) {
+                game.milestones.forEach(milestone => {
+                    // 添加 status-tag 以应用颜色
+                    milestonesHtml += `<p class="milestone-item"><span class="milestone-date">${milestone.date || '未知日期'}:</span> <span class="status-tag ${getStatusClass(milestone.status)}">${milestone.status || '未知状态'}</span></p>`;
+                });
+            } else {
+                milestonesHtml = '<p class="milestone-item">暂无动态</p>';
+            }
 
+            // 构建卡片内部 HTML
             card.innerHTML = `
                 <div class="featured-card-header">
                     ${iconHtml}
                     <h3>${game.name || '未知名称'}</h3>
                 </div>
-                <p><span class="label">日期:</span> ${game.date || '未知'}</p>
-                <p><span class="label">状态/计划:</span> <span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></p>
+                <div class="milestones-section">
+                    ${milestonesHtml}
+                </div>
                 <p><span class="label">厂商:</span> ${game.publisher || '未知厂商'}</p>
                 <p><span class="label">分类:</span> ${game.category || '无'}</p>
                 ${game.link ? `<a href="${game.link}" target="_blank" class="game-link">查看详情</a>` : ''}
@@ -276,36 +286,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 更新UI以反映当前选择的页签 ---
+    // --- 更新UI以反映当前选择的页签 (简化) ---
     function updateUIForSection(section) {
-        currentSection = section;
-        // 清理之前的激活状态
+        // currentSection = section; // 不再需要
+        // 清理之前的激活状态 (保留，以防未来添加新页签)
         document.querySelectorAll('.navbar a.active').forEach(el => el.classList.remove('active'));
-        // 设置当前激活状态
-        const activeLink = document.querySelector(`.navbar a[data-section="${section}"]`);
+        // 设置当前激活状态 (硬编码为 all)
+        const activeLink = document.querySelector(`.navbar a[data-section="all"]`);
         if (activeLink) {
             activeLink.classList.add('active');
         }
 
+        // 移除根据 section 显示/隐藏 top-games 和修改标题的逻辑
+        // 因为现在只有一个 section，UI 始终是显示 top-games 和"全部游戏列表"
+        topGamesSection.style.display = 'block';
+        gamesTableTitle.textContent = '全部游戏列表';
 
-        if (section === 'featured') {
-            // 热门关注页签
-            topGamesSection.style.display = 'none'; // 隐藏首页的重点关注模块
-            gamesTableTitle.textContent = '重点关注游戏列表'; // 修改标题
-            // 表格本身现在不需要特殊处理，因为不再有开关列
-        } else {
-            // 全部游戏页签
-            topGamesSection.style.display = 'block'; // 显示首页的重点关注模块
-            gamesTableTitle.textContent = '全部游戏列表';
-            // 表格本身也不需要特殊处理
-        }
-         // 切换时重置筛选条件并重新加载
+         // 切换时重置筛选条件并重新加载 (保留，虽然现在不会切换，但逻辑完整)
         resetFilters();
         currentPage = 1;
-        loadAllGames(); // 重新加载数据以匹配新 section
+        loadAllGames(); // 重新加载数据
     }
 
-     // --- 重置筛选条件的辅助函数 ---
+     // --- 重置筛选条件的辅助函数 --- (保持不变)
     function resetFilters() {
         searchInput.value = '';
         statusFilter.value = '';
@@ -314,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // --- 加载全部游戏数据（带过滤和分页）---
+    // --- 加载全部游戏数据（带过滤和分页）(移除 featured 参数) ---
     async function loadAllGames() {
         const colspan = 5; // 固定为 5 列
         allGamesTbody.innerHTML = `<tr><td colspan="${colspan}" class="loading-message">正在加载游戏列表...</td></tr>`;
@@ -327,13 +330,13 @@ document.addEventListener('DOMContentLoaded', () => {
             search: searchInput.value.trim(),
             status: statusFilter.value,
             source: sourceFilter.value,
-            publisher: publisherFilter.value, // 新增 publisher 参数
-            featured: currentSection === 'featured' ? 'true' : null
+            publisher: publisherFilter.value,
+            // featured: currentSection === 'featured' ? 'true' : null // 移除 featured 参数
         };
 
         // 特殊处理 TWM 选项
         if (params.publisher === 'TWM') {
-            params.publisher = 'TENCENT,NETEASE,MIHOYO'; // 后端需要识别这个特殊值
+            params.publisher = 'TENCENT,NETEASE,MIHOYO';
         }
 
         const data = await fetchData('/games', params);
@@ -374,15 +377,15 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFeaturedGames(featuredGames); // 直接渲染从 API 获取的数据
     }
 
-    // --- 事件监听器设置 ---
+    // --- 事件监听器设置 (简化导航切换) ---
     function setupEventListeners() {
-        // 筛选按钮点击
+        // 筛选按钮点击 (保持不变)
         filterButton.addEventListener('click', () => {
             currentPage = 1; // 筛选时重置到第一页
             loadAllGames();
         });
 
-        // 搜索框回车触发筛选
+        // 搜索框回车触发筛选 (保持不变)
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 currentPage = 1;
@@ -390,18 +393,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 下拉框改变时也触发筛选 (可选，看是否需要实时筛选)
-        // statusFilter.addEventListener('change', () => {
-        //     currentPage = 1;
-        //     loadAllGames();
-        // });
-        // sourceFilter.addEventListener('change', () => {
-        //     currentPage = 1;
-        //     loadAllGames();
-        // });
-
-
-        // 分页控件
+        // 分页控件 (保持不变)
         prevPageButton.addEventListener('click', () => {
             if (currentPage > 1) {
                 currentPage--;
@@ -416,27 +408,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 导航切换 (修改：切换时调用 updateUIForSection)
+        // 导航切换 (简化，因为只有一个页签了)
+        // 可以完全移除，或者保留以备将来扩展
+        /*
         document.querySelectorAll('.navbar a').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                const section = e.target.getAttribute('data-section');
-                if (section !== currentSection) { // 只有在切换不同 section 时才执行
-                    updateUIForSection(section);
-                     // updateUIForSection 内部会重置过滤器并加载数据
-                }
+                // const section = e.target.getAttribute('data-section');
+                // updateUIForSection('all'); // 始终回到 all
             });
         });
+        */
     }
 
-    // --- 初始化和启动 ---
+    // --- 初始化和启动 (简化) ---
     async function initialLoad() {
-        // 默认加载 'all' 区块
-        const initialSection = 'all';
-        updateUIForSection(initialSection); // 设置初始UI状态 (这会加载数据)
+        // 直接设置初始状态为 all，无需调用 updateUIForSection
+        const activeLink = document.querySelector(`.navbar a[data-section="all"]`);
+        if (activeLink) {
+            activeLink.classList.add('active');
+        }
+        topGamesSection.style.display = 'block';
+        gamesTableTitle.textContent = '全部游戏列表';
+
         setupEventListeners();        // 设置所有事件监听器
-        loadFeaturedGames();          // 加载首页的重点游戏卡片
+        loadFeaturedGames();          // 加载首页的重点游戏卡片 (仍然保留)
         await fetchAllGamesForFilters(); // 获取所有游戏数据并填充所有过滤器
+        loadAllGames();                // 初始加载全部游戏列表
     }
 
     initialLoad(); // 执行初始加载

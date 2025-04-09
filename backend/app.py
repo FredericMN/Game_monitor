@@ -243,25 +243,72 @@ def get_games():
 
     return jsonify(response)
 
-# 重点游戏 API 路由
+# 重点游戏 API 路由 (重构逻辑)
 @app.route('/api/featured-games')
 def get_featured_games():
-    """返回重点关注的游戏数据 (基于 Excel 的 is_featured 字段)"""
-    game_data = load_game_data()
-    if not game_data:
+    """返回重点关注的游戏数据，合并同名游戏的历史记录"""
+    all_games = load_game_data() # 加载所有游戏
+    if not all_games:
         return jsonify([])
 
-    featured_games = [
-        game for game in game_data
-        if game.get('is_featured', False)
-    ]
-    # print(f"Returning {len(featured_games)} featured games from /api/featured-games endpoint.")
+    # 1. 按游戏名称分组
+    games_by_name = {}
+    for game in all_games:
+        name = game.get('name')
+        if name:
+            if name not in games_by_name:
+                games_by_name[name] = []
+            games_by_name[name].append(game)
 
-    # 可以考虑在这里限制返回数量或排序
-    # featured_games.sort(key=lambda g: str(g.get('date', '1970-01-01')), reverse=True)
-    # featured_games = featured_games[:16]
+    # 2. 筛选出包含至少一个重点关注记录的游戏组，并处理合并
+    featured_groups = []
+    for name, group in games_by_name.items():
+        # 检查该组是否有至少一个重点记录
+        has_featured_record = any(g.get('is_featured', False) for g in group)
 
-    return jsonify(featured_games)
+        if has_featured_record:
+            # 找到日期最新的"重点"记录作为主要信息源
+            group.sort(key=lambda g: str(g.get('date', '0000-00-00')), reverse=True) # 按日期降序排组内记录
+            primary_record = next((g for g in group if g.get('is_featured', False)), None)
+            # 如果找不到重点记录（理论上不会发生，因为前面检查过），则用最新的记录作为主记录
+            if not primary_record:
+                primary_record = group[0] if group else None
+
+            if not primary_record:
+                continue # 如果组为空或没有有效主记录，跳过
+
+            # 提取主要信息
+            main_info = {
+                'name': primary_record.get('name'),
+                'icon_url': primary_record.get('icon_url'),
+                'publisher': primary_record.get('publisher'),
+                'category': primary_record.get('category'),
+                'link': primary_record.get('link'),
+            }
+
+            # 提取最新的最多 5 条里程碑 (日期 + 状态)
+            milestones = []
+            for game_record in group[:5]: # 修改：取排序后的前 5 条
+                if game_record.get('date') and game_record.get('status'):
+                    milestones.append({
+                        'date': str(game_record.get('date')),
+                        'status': game_record.get('status')
+                    })
+
+            # 构建合并后的游戏对象
+            featured_groups.append({
+                **main_info,
+                'milestones': milestones
+            })
+
+    # 3. 可以对最终结果排序，例如按合并后游戏组中最新里程碑的日期排序
+    featured_groups.sort(
+        key=lambda g: g['milestones'][0]['date'] if g.get('milestones') else '0000-00-00',
+        reverse=True
+    )
+
+    print(f"重构后返回 {len(featured_groups)} 个重点关注游戏组。")
+    return jsonify(featured_groups)
 
 # --- 图片代理路由 (修改后，处理嵌套 URL) --- #
 @app.route('/api/image')
