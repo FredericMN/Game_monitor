@@ -342,6 +342,11 @@ body {
     white-space: normal; /* 允许换行 */
 }
 
+/* Center publisher content cells */
+.styled-table td.publisher-cell {
+    text-align: center;
+}
+
 /* 加载提示信息样式 */
 .loading-message {
     text-align: center;

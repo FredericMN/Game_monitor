@@ -7,6 +7,7 @@ import requests
 from io import BytesIO
 from flask import Flask, jsonify, request, send_file, Response
 from flask_cors import CORS
+from urllib.parse import urlparse, parse_qs, unquote
 
 # --- 配置 --- #
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -247,86 +248,108 @@ def get_featured_games():
 
     return jsonify(featured_games)
 
-# --- 新增：图片代理路由 --- #
+# --- 图片代理路由 (修改后，处理嵌套 URL) --- #
 @app.route('/api/image')
 def proxy_image():
-    """代理获取外部图片 URL，绕过防盗链"""
-    image_url = request.args.get('url')
-    if not image_url:
+    """代理获取外部图片 URL，尝试处理嵌套的代理 URL"""
+    image_url_initial = request.args.get('url')
+    if not image_url_initial:
         return "Missing image URL", 400
 
-    # print(f"代理请求图片: {image_url}") #减少日志噪音
+    print(f"收到代理请求 URL: {image_url_initial}") # Log initial URL
+
+    image_url = image_url_initial # Start with the initial URL
+
+    # --- 尝试解析嵌套 URL ---
+    try:
+        # 检查是否是已知的嵌套代理格式 (例如 img.16p.com)
+        parsed_initial = urlparse(image_url_initial)
+        if parsed_initial.netloc == 'img.16p.com' and parsed_initial.path.startswith('/img_proxy'):
+            print("检测到 img.16p.com 嵌套代理 URL...")
+            query_params = parse_qs(parsed_initial.query)
+            nested_url_list = query_params.get('url') # parse_qs returns a list
+            if nested_url_list and nested_url_list[0]:
+                # 提取并解码嵌套的 URL
+                extracted_url = unquote(nested_url_list[0])
+                print(f"  提取到的嵌套 URL: {extracted_url}")
+                # 验证提取的 URL 是否看起来像一个有效的 HTTP/HTTPS URL
+                if extracted_url.lower().startswith(('http://', 'https://')):
+                    image_url = extracted_url # 使用提取到的 URL 进行后续操作
+                else:
+                    print(f"  警告: 提取到的嵌套 URL '{extracted_url}' 格式无效，将继续使用原始 URL。")
+            else:
+                print("  警告: 未能在 img.16p.com 代理 URL 中找到有效的嵌套 'url' 参数。")
+
+        # 在这里可以添加对其他已知代理格式的检查 (elif ...)
+
+    except Exception as e:
+        print(f"解析嵌套 URL 时出错: {e}，将继续使用原始 URL: {image_url_initial}")
+        # 出错时，回退到使用原始 URL
+
+    # --- 后续处理使用最终确定的 image_url ---
+    print(f"最终处理的图片 URL: {image_url}")
+
+    # 如果最终 URL 仍然是嵌套代理格式（例如解析失败或非已知格式），后续请求可能会失败
+    # 但我们还是尝试请求
+    if not image_url or not image_url.lower().startswith(('http://', 'https://')):
+         print(f"错误: 最终图片 URL 无效: {image_url}")
+         return "Invalid final image URL", 400
+
+
     try:
         # 根据图片URL的域名选择适当的Referer
         referer = 'https://www.google.com/' # 通用 Referer
+        # 对最终确定的 image_url 判断来源
         if 'taptap.cn' in image_url or 'tapimg.com' in image_url:
             referer = 'https://www.taptap.cn/'
         elif 'biligame.com' in image_url or 'hdslb.com' in image_url:
              referer = 'https://www.biligame.com/'
+        elif '71acg.net' in image_url: # 为新发现的域名添加 Referer (可选，可能不需要)
+             referer = 'https://www.71acg.net/' # 或者一个更通用的 Referer
 
-        # 设置请求头，模拟浏览器，增加成功率
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36',
             'Referer': referer,
             'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-            # 'Accept-Encoding': 'gzip, deflate, br', # 暂时移除，避免某些服务器问题
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive'
         }
 
-        # 处理可能的URL格式问题
         if image_url.startswith('//'):
             image_url = 'https:' + image_url
 
-        response = requests.get(image_url, headers=headers, stream=True, timeout=15) # 增加超时
-        response.raise_for_status() # 如果状态码不是 2xx，则抛出异常
+        response = requests.get(image_url, headers=headers, stream=True, timeout=15)
+        response.raise_for_status()
 
-        # 获取内容类型
         content_type = response.headers.get('Content-Type', 'image/jpeg')
 
-        # 确保内容类型是图片
         if not content_type.startswith('image/'):
-             # 如果服务器返回奇怪的类型（如 text/plain），尝试更正
-             if image_url.lower().endswith('.png'):
-                 content_type = 'image/png'
-             elif image_url.lower().endswith(('.jpg', '.jpeg')):
-                 content_type = 'image/jpeg'
-             elif image_url.lower().endswith('.gif'):
-                 content_type = 'image/gif'
-             elif image_url.lower().endswith('.webp'):
-                 content_type = 'image/webp'
-             else:
-                 content_type = 'image/jpeg' # 默认
+             if image_url.lower().endswith('.png'): content_type = 'image/png'
+             elif image_url.lower().endswith(('.jpg', '.jpeg')): content_type = 'image/jpeg'
+             elif image_url.lower().endswith('.gif'): content_type = 'image/gif'
+             elif image_url.lower().endswith('.webp'): content_type = 'image/webp'
+             else: content_type = 'image/jpeg'
 
-
-        # 将内容读入内存中的 BytesIO 对象，然后使用 send_file
         image_data = BytesIO(response.content)
 
-        # 添加缓存控制和CORS头
         resp = send_file(image_data, mimetype=content_type)
-        resp.headers['Cache-Control'] = 'public, max-age=86400'  # 缓存一天
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
 
     except requests.exceptions.Timeout:
         print(f"代理请求超时: {image_url}")
-        # 可以返回一个特定的超时占位图或错误
-        return "Image request timed out", 408 # Request Timeout
+        return "Image request timed out", 408
     except requests.exceptions.RequestException as e:
         print(f"代理请求失败 ({type(e).__name__}): {e} for URL: {image_url}")
-        # 返回默认占位图片URL或错误信息
-        # return "Failed to fetch image: " + str(e), 404 # Not Found or 502 Bad Gateway?
-        # 尝试返回一个 1x1 的透明像素作为占位符，避免前端图片加载错误中断渲染
         transparent_pixel = b'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
         resp = Response(transparent_pixel, mimetype='image/gif')
         resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp, 404 # Return 404 but with placeholder image data
+        return resp, 404
 
     except Exception as e:
         print(f"处理代理请求时发生未知错误: {e}")
-        # import traceback
-        # traceback.print_exc() # 打印详细错误以便调试
         return "Internal server error: " + str(e), 500
 
 

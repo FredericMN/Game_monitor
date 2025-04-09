@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const statusCell = `<td><span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span></td>`;
 
             // Publisher cell
-            const publisherCell = `<td>${game.publisher || '未知厂商'}</td>`;
+            const publisherCell = `<td class="publisher-cell">${game.publisher || '未知厂商'}</td>`;
 
             // Description cell
             const descriptionCell = `<td class="description-cell">${truncateText(game.description, 60) || '无'}</td>`; // 给简介单元格添加类名
