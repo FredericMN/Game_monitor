@@ -225,26 +225,60 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 logging.info("--- 开始清洗历史游戏名称 ---")
                 for game in games_to_process: game['cleaned_name'] = clean_game_name(game.get('name'))
 
-                unlocked_history_games = [g for g in games_to_process if (clean_game_name(g.get('name')), g.get('date', '0000-00-00')) not in locked_records]
+                # --- 新增: 对历史数据应用 AppStore 过滤 ---
+                logging.info("--- 开始过滤历史数据中的 AppStore 特定记录 ---")
+                filtered_games_to_process = []
+                removed_appstore_hist_count = 0
+                # Define major publisher keywords (lowercase)
+                major_publisher_keywords = {'ltd', '腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo'}
+
+                for game in games_to_process:
+                    key = (game.get('cleaned_name'), game.get('date', '0000-00-00'))
+                    if key in locked_records:
+                        filtered_games_to_process.append(game)
+                        continue
+
+                    source = game.get('source', '').lower()
+                    original_name = game.get('name', '')
+                    cleaned_name = game.get('cleaned_name', '')
+                    publisher_lower = game.get('publisher', '').lower()
+
+                    is_appstore = (source == 'appstore')
+                    too_many_spaces = original_name.count(' ') >= 2
+                    too_long = len(cleaned_name) > 10
+
+                    # Check if publisher is considered major
+                    is_major_publisher = any(keyword in publisher_lower for keyword in major_publisher_keywords)
+
+                    # Apply filter only if AppStore, meets criteria, AND is NOT from a major publisher
+                    if is_appstore and (too_many_spaces or too_long) and not is_major_publisher:
+                        logging.info(f"  过滤历史 AppStore 记录: '{original_name}' [发行: {game.get('publisher')}] (原因: {'多个空格' if too_many_spaces else ''}{'/' if too_many_spaces and too_long else ''}{'名称过长' if too_long else ''})")
+                        removed_appstore_hist_count += 1
+                        continue # Skip this game
+                    else:
+                        filtered_games_to_process.append(game)
+                logging.info(f"历史数据 AppStore 过滤完成，移除了 {removed_appstore_hist_count} 条记录。")
+                # --- 结束 AppStore 过滤 ---
+
+                # Derieve unlocked_history_games from the *filtered* list
+                unlocked_history_games = [g for g in filtered_games_to_process if (g.get('cleaned_name'), g.get('date', '0000-00-00')) not in locked_records]
+
                 if match_versions_func and unlocked_history_games:
                     logging.info(f"--- 开始对 {len(unlocked_history_games)} 条未锁定历史数据进行版号匹配 ---")
                     try:
+                         # Add index for reliable update during version matching
                          for i, game in enumerate(unlocked_history_games): game['_original_index'] = i # Use consistent index key
-                         match_versions_func(unlocked_history_games)
+                         match_versions_func(unlocked_history_games) # Modifies in place
                          logging.info("历史数据版号匹配完成。")
                     except Exception as e: logging.error(f"历史数据版号匹配过程中出错: {e}", exc_info=True) # Log, don't raise
                 elif not match_versions_func: logging.warning("版号匹配模块未导入，跳过历史数据匹配。")
                 else: logging.info("没有需要进行版号匹配的未锁定历史数据。")
 
+                # Combine locked records with the (potentially version-matched) filtered unlocked history
                 final_processed_list = list(locked_records.values()) + unlocked_history_games
                 logging.info("--- 开始标准化最终历史数据 ---")
-                # standardize_game_data handles potential errors internally somewhat, but wrap anyway
-                try:
-                    temp_final_list = standardize_game_data(final_processed_list, excel_columns_map)
-                    logging.info(f"完成 {len(temp_final_list)} 条历史数据的标准化。")
-                except Exception as e:
-                    logging.error(f"历史数据标准化过程中出错: {e}", exc_info=True)
-                    raise # Standardization error is critical
+                temp_final_list = standardize_game_data(final_processed_list, excel_columns_map)
+                logging.info(f"完成 {len(temp_final_list)} 条历史数据的标准化。")
 
         else: # Fetch new data mode
             # 2. Fetch new data
@@ -294,7 +328,42 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 logging.info("--- 开始清洗新获取的游戏名称 ---")
                 for game in newly_fetched_games: game['cleaned_name'] = clean_game_name(game.get('name'))
 
-                # 4. Match versions for new, unlocked data
+                # --- 新增: AppStore 特定过滤 ---
+                logging.info("--- 开始过滤 AppStore 特定记录 ---")
+                initial_count = len(newly_fetched_games)
+                filtered_new_games = []
+                removed_appstore_count = 0
+                # Define major publisher keywords (lowercase)
+                major_publisher_keywords = {'ltd', '腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo'}
+
+                for game in newly_fetched_games:
+                    source = game.get('source', '').lower() # 检查来源，忽略大小写
+                    original_name = game.get('name', '')
+                    cleaned_name = game.get('cleaned_name', '') # 使用已清洗的名称
+                    publisher_lower = game.get('publisher', '').lower()
+
+                    is_appstore = (source == 'appstore')
+
+                    # 定义过滤条件
+                    too_many_spaces = original_name.count(' ') >= 2
+                    too_long = len(cleaned_name) > 10
+
+                    # Check if publisher is considered major
+                    is_major_publisher = any(keyword in publisher_lower for keyword in major_publisher_keywords)
+
+                    # Apply filter only if AppStore, meets criteria, AND is NOT from a major publisher
+                    if is_appstore and (too_many_spaces or too_long) and not is_major_publisher:
+                        logging.info(f"  过滤 AppStore 记录: '{original_name}' [发行: {game.get('publisher')}] (原因: {'多个空格' if too_many_spaces else ''}{'/' if too_many_spaces and too_long else ''}{'名称过长' if too_long else ''})")
+                        removed_appstore_count += 1
+                        continue # 跳过此游戏
+                    else:
+                        filtered_new_games.append(game)
+
+                logging.info(f"AppStore 过滤完成，移除了 {removed_appstore_count} 条记录。剩余新记录: {len(filtered_new_games)}")
+                newly_fetched_games = filtered_new_games # 使用过滤后的列表进行后续操作
+                # --- 结束 AppStore 过滤 ---
+
+                # 4. Match versions for new, unlocked data (Now operates on filtered list)
                 if match_versions_func and newly_fetched_games:
                     games_to_match = []
                     for i, game in enumerate(newly_fetched_games):
