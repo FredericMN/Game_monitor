@@ -421,8 +421,7 @@ def cleanup_version_cache(cache_file_path):
             with open(cache_file_path, 'w', encoding='utf-8') as f:
                 for entry in cleaned_cache_entries:
                     json.dump(entry, f, ensure_ascii=False)
-                    f.write('
-')
+                    f.write('\n')
         print(f"[缓存清理] 清理完成。处理了 {len(grouped_results)} 个游戏名称，最终保留 {len(cleaned_cache_entries)} 条缓存记录。")
         if multiple_results_warnings > 0:
             print(f"[缓存清理] 共发现 {multiple_results_warnings} 个游戏存在多个不同版号。")
