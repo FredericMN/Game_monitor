@@ -148,7 +148,8 @@ def get_games():
     status = request.args.get('status', None)
     search = request.args.get('search', None)
     source = request.args.get('source', None)
-    platform_filter = request.args.get('platform', None) # 新增平台过滤参数
+    publisher_filter = request.args.get('publisher', None) # 新增厂商过滤参数
+    platform_filter = request.args.get('platform', None)
     page = request.args.get('page', default=1, type=int)
     per_page = request.args.get('per_page', default=15, type=int)
 
@@ -158,7 +159,6 @@ def get_games():
     # 按是否重点关注过滤
     if is_featured_query:
         filtered_data = [game for game in filtered_data if game.get('is_featured', False)]
-        # print(f"Filtering for featured games. Found {len(filtered_data)} items.")
 
     # 按状态过滤
     if status:
@@ -166,7 +166,6 @@ def get_games():
             game for game in filtered_data
             if game.get('status') and status.lower() in str(game.get('status', '')).lower()
         ]
-        # print(f"Filtering by status '{status}'. Found {len(filtered_data)} items.")
 
     # 按来源过滤
     if source:
@@ -174,17 +173,34 @@ def get_games():
             game for game in filtered_data
             if game.get('source') and source.lower() in str(game.get('source', '')).lower()
         ]
-        # print(f"Filtering by source '{source}'. Found {len(filtered_data)} items.")
 
-    # 新增：按平台过滤
+    # 新增：按厂商过滤 (处理特殊值 TWM)
+    if publisher_filter:
+        target_publishers = []
+        if publisher_filter == 'TENCENT,NETEASE,MIHOYO': # 特殊值处理
+            target_publishers = ['腾讯', 'tencent', '网易', 'netease', '米哈游', 'mihoyo']
+            print(f"Filtering for TWM publishers: {target_publishers}")
+            filtered_data = [
+                game for game in filtered_data
+                if game.get('publisher') and any(p.lower() in str(game.get('publisher', '')).lower() for p in target_publishers)
+            ]
+        else:
+            # 普通厂商名称过滤
+            target_publishers = [publisher_filter.lower()]
+            print(f"Filtering for publisher: {publisher_filter}")
+            filtered_data = [
+                game for game in filtered_data
+                if game.get('publisher') and publisher_filter.lower() in str(game.get('publisher', '')).lower()
+            ]
+
+    # 按平台过滤
     if platform_filter:
         filtered_data = [
             game for game in filtered_data
             if game.get('platform') and platform_filter.lower() in str(game.get('platform', '')).lower()
         ]
-        # print(f"Filtering by platform '{platform_filter}'. Found {len(filtered_data)} items.")
 
-    # 搜索功能（在名称、分类、厂商、平台中搜索）
+    # 搜索功能
     if search:
         search_lower = search.lower()
         filtered_data = [
@@ -192,9 +208,8 @@ def get_games():
             if (search_lower in str(game.get('name', '')).lower() or
                 search_lower in str(game.get('category', '')).lower() or
                 search_lower in str(game.get('publisher', '')).lower() or
-                search_lower in str(game.get('platform', '')).lower()) # 添加平台搜索
+                search_lower in str(game.get('platform', '')).lower())
         ]
-        # print(f"Filtering by search term '{search}'. Found {len(filtered_data)} items.")
 
     # 排序 (可选，例如按日期降序)
     # try:

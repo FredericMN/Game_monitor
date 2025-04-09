@@ -59,14 +59,45 @@ def clean_game_name(name):
     return cleaned if cleaned else name
 
 def standardize_status(status):
-    if not isinstance(status, str): status = str(status)
-    status_lower = status.lower()
-    if "删档" in status_lower: return "删档测试"
-    if "不删档" in status_lower: return "不删档测试"
-    if any(keyword in status_lower for keyword in ["测试", "test", "beta", "限量"]): return "测试" # Updated as per user edit
-    if any(keyword in status_lower for keyword in ["预约", "预定", "pre", "待上线", "即将上线"]): return "可预约"
-    if any(keyword in status_lower for keyword in ["上线", "公测", "首发"]): return "上线"
-    if any(keyword in status_lower for keyword in ["更新", "新版本"]): return "更新"
+    """
+    标准化游戏状态字符串。
+    优先处理包含"招募"的，然后处理"不删档"，再将其他测试（包括删档）归为"测试"，最后处理其他状态。
+
+    Args:
+        status: 原始状态字符串。
+
+    Returns:
+        标准化后的状态字符串。
+    """
+    # 确保输入是字符串
+    if not isinstance(status, str):
+        status = str(status)
+    status_lower = status.lower() # 转小写方便比较
+
+    # 优先处理包含"招募"的情况
+    if "招募" in status: # 直接使用原始 status, 不用 status_lower
+        return status # 保留原始状态，例如 "测试招募"
+
+    # 处理不删档测试
+    if "不删档" in status_lower:
+        return "不删档测试"
+
+    # 处理所有其他类型的测试（包括删档、beta、限量等）
+    # 注意：此检查现在会捕获 "删档测试"
+    if any(keyword in status_lower for keyword in ["测试", "test", "beta", "限量"]):
+        return "测试" # Updated as per user edit
+
+    # 处理预约状态
+    if any(keyword in status_lower for keyword in ["预约", "预定", "pre", "待上线", "即将上线"]):
+        return "可预约"
+    # 处理上线状态
+    if any(keyword in status_lower for keyword in ["上线", "公测", "首发"]):
+        return "上线"
+    # 处理更新状态
+    if any(keyword in status_lower for keyword in ["更新", "新版本"]):
+        return "更新"
+
+    # 如果以上都不是，返回原始状态
     return status
 
 def extract_rating_value(rating_text):

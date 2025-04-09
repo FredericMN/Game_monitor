@@ -41,8 +41,13 @@
                 </select>
                 <select id="source-filter">
                     <option value="">所有来源</option>
-                    <option value="TapTap">TapTap</option>
-                    <!-- 可以添加其他来源 -->
+                    <!-- 来源选项将由 JS 动态填充 -->
+                </select>
+                <!-- 新增厂商筛选 -->
+                <select id="publisher-filter">
+                    <option value="">所有厂商</option>
+                    <option value="TWM">腾网米</option> <!-- 特殊选项 -->
+                    <!-- 其他厂商选项将由 JS 动态填充 -->
                 </select>
                 <button id="filter-button">筛选</button>
             </div>
@@ -50,9 +55,9 @@
                 <thead>
                     <tr>
                         <th>日期</th>
-                        <th>图标</th>
-                        <th>游戏名称</th>
-                        <th>状态/计划</th>
+                        <!-- <th>图标</th> -->
+                        <th>游戏名称 / 状态</th>
+                        <th>分类</th>
                         <th>厂商</th>
                         <th class="description-column">简介</th>
                         <!-- <th id="featured-column-head" style="display: none;">重点关注</th> -->
@@ -60,7 +65,7 @@
                 </thead>
                 <tbody id="all-games-tbody">
                     <!-- 表格内容将由 JS 动态填充 -->
-                    <tr><td colspan="6" class="loading-message">正在加载游戏列表...</td></tr>
+                    <tr><td colspan="5" class="loading-message">正在加载游戏列表...</td></tr>
                 </tbody>
             </table>
             <!-- 分页控件 -->
