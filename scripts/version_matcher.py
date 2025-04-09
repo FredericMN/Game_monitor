@@ -349,19 +349,38 @@ def match_version_numbers_for_games(games_list):
 
 # --- 主程序入口 (用于测试) --- #
 if __name__ == "__main__":
-    # 构造一些测试游戏数据
-    test_games = [
-        {"name": "鸣潮", "source": "TapTap"}, # 应该能查到
-        {"name": "绝区零", "source": "TapTap"}, # 应该能查到
-        {"name": "王者荣耀", "source": "TapTap"}, # 应该能查到
-        {"name": "一个不存在的游戏XXX", "source": "TapTap"}, # 查不到
-        {"name": "", "source": "TapTap"}, # 空名字
-        {"name": "未知名称", "source": "TapTap"}
-    ]
-    
-    print("\n === 开始测试版号匹配 === \n")
-    updated_games = match_version_numbers_for_games(test_games)
-    
-    print("\n === 测试结果 === ")
     import json
-    print(json.dumps(updated_games, indent=2, ensure_ascii=False)) 
+    import os
+
+    # 定义要读取的 JSONL 文件路径
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+    target_file = os.path.join(data_dir, "taptap_games_2025-04-09.jsonl")
+
+    test_games = []
+    if os.path.exists(target_file):
+        print(f"读取测试文件: {target_file}")
+        try:
+            with open(target_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        game_data = json.loads(line.strip())
+                        # 只需要 name 和 source (或其他必要字段) 用于匹配测试
+                        test_games.append({"name": game_data.get("name"), "source": game_data.get("source", "TapTap")})
+                    except json.JSONDecodeError:
+                        print(f"警告: 无法解析行: {line.strip()}")
+            print(f"从 {target_file} 加载了 {len(test_games)} 个游戏进行测试。")
+        except Exception as e:
+            print(f"读取测试文件时出错 ({target_file}): {e}")
+            test_games = [] # 出错则清空
+    else:
+        print(f"错误: 测试文件未找到 {target_file}")
+
+    if test_games:
+        print("\n === 开始测试版号匹配 === \n")
+        updated_games = match_version_numbers_for_games(test_games)
+
+        print("\n === 测试结果 === ")
+        # 使用 json.dumps 输出，更容易阅读
+        print(json.dumps(updated_games, indent=2, ensure_ascii=False))
+    else:
+        print("\n未能加载测试数据，跳过版号匹配测试。") 
