@@ -10,6 +10,7 @@ from datetime import datetime
 import pandas as pd
 import logging
 import glob # Needed for checking excel file
+import unicodedata # 添加 unicodedata 用于规范化
 
 # --- 配置日志 ---
 log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
@@ -53,15 +54,35 @@ except ImportError as e: logging.error(f"导入 version_matcher 失败: {e}")
 # --- 辅助函数 ---
 def clean_game_name(name):
     if not name: return "未知名称"
-    cleaned = re.sub(r'[（(].*?[)）]', '', name)
-    cleaned = re.sub(r'[-–—]\s*[^-\s]+$', '', cleaned)
+    
+    # 1. Unicode 规范化 (NFKC)
+    try:
+        normalized_name = unicodedata.normalize('NFKC', str(name))
+    except TypeError:
+        normalized_name = str(name) # Fallback if normalization fails
+    
+    # 2. 移除括号及其内容 (更通用)
+    cleaned = re.sub(r'[\(（\[【].*?[\)）\]】]\', '', normalized_name)
+    # 3. 移除常见的宣传后缀和分隔符后的内容
+    cleaned = re.sub(r'[-–—:：]\s*.*$\', '', cleaned) # 移除分隔符后的所有内容
+    # 4. 移除特定后缀 (示例，可扩展)
+    cleaned = re.sub(r'\s*(?:手游|Mobile|版|测试服|体验服|先锋服|官方)$\' ,\'\', cleaned, flags=re.IGNORECASE)
+    # 5. 替换多个空格为单个空格
+    cleaned = re.sub(r'\s+\', \' \', cleaned)
+    # 6. 去除首尾空格
     cleaned = cleaned.strip()
-    return cleaned if cleaned else name
+    
+    # 如果清理后为空，返回原始名称（规范化后）
+    return cleaned if cleaned else normalized_name.strip()
 
 def standardize_status(status):
     """
     标准化游戏状态字符串。
-    优先处理包含"招募"的，然后处理"不删档"，再将其他测试（包括删档）归为"测试"，最后处理其他状态。
+    规则更新：
+    - 包含 "招募" -> "测试招募"
+    - 包含 "不删档" -> "不删档测试"
+    - 其他包含测试相关关键词 -> "测试"
+    - 其他状态（预约、上线、更新）照旧
 
     Args:
         status: 原始状态字符串。
@@ -72,33 +93,39 @@ def standardize_status(status):
     # 确保输入是字符串
     if not isinstance(status, str):
         status = str(status)
-    status_lower = status.lower() # 转小写方便比较
+    
+    # 去除首尾空格
+    status_trimmed = status.strip()
+    status_lower = status_trimmed.lower() # 转小写方便比较
 
-    # 优先处理包含"招募"的情况
-    if "招募" in status: # 直接使用原始 status, 不用 status_lower
-        return status # 保留原始状态，例如 "测试招募"
+    # --- 新规则应用 --- 
+    
+    # 1. 处理招募 (最高优先级)
+    if "招募" in status_trimmed: # 检查原始（去空格后）是否包含招募
+        return "测试招募"
 
-    # 处理不删档测试
+    # 2. 处理不删档测试
     if "不删档" in status_lower:
         return "不删档测试"
 
-    # 处理所有其他类型的测试（包括删档、beta、限量等）
-    # 注意：此检查现在会捕获 "删档测试"
+    # 3. 处理所有其他类型的测试（在招募和不删档之后检查）
     if any(keyword in status_lower for keyword in ["测试", "test", "beta", "限量"]):
-        return "测试" # Updated as per user edit
+        return "测试"
 
-    # 处理预约状态
+    # 4. 处理预约状态
     if any(keyword in status_lower for keyword in ["预约", "预定", "pre", "待上线", "即将上线"]):
         return "可预约"
-    # 处理上线状态
+    
+    # 5. 处理上线状态
     if any(keyword in status_lower for keyword in ["上线", "公测", "首发"]):
         return "上线"
-    # 处理更新状态
+    
+    # 6. 处理更新状态
     if any(keyword in status_lower for keyword in ["更新", "新版本"]):
         return "更新"
 
-    # 如果以上都不是，返回原始状态
-    return status
+    # 7. 如果以上都不是，返回去除首尾空格后的原始状态
+    return status_trimmed
 
 def extract_rating_value(rating_text):
     if isinstance(rating_text, (int, float)): return float(rating_text)
