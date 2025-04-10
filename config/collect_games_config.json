@@ -1,0 +1,40 @@
+{
+  "game_name_cleaning": {
+    "remove_patterns_regex": [
+      "[\\(（\\[【].*?[\\)）\\]】]",
+      "[-–—]\\s*.*$",
+      "\\s*(?:手游|Mobile|版|测试服|体验服|先锋服|官方)$"
+    ],
+    "normalize_unicode_form": "NFC"
+  },
+  "status_standardization": {
+    "keywords_recruit": ["招募"],
+    "status_recruit": "测试招募",
+    "keywords_no_delete": ["不删档"],
+    "status_no_delete": "不删档测试",
+    "keywords_test": ["测试", "test", "beta", "限量"],
+    "status_test": "测试",
+    "keywords_preorder": ["预约", "预定", "pre", "待上线", "即将上线"],
+    "status_preorder": "可预约",
+    "keywords_online": ["上线", "公测", "首发"],
+    "status_online": "上线",
+    "keywords_update": ["更新", "新版本"],
+    "status_update": "更新"
+  },
+  "appstore_filter": {
+    "enabled": true,
+    "max_spaces_in_name": 1,
+    "max_cleaned_name_length": 10,
+    "major_publisher_keywords": ["ltd", "腾讯", "tencent", "网易", "netease", "米哈游", "mihoyo", "lingxi"],
+    "blocked_publishers": ["big kid gaming studio (private) limited", "ms zeroloft games"]
+  },
+  "deduplication": {
+    "source_priority": ["TapTap"],
+    "compare_richness": true
+  },
+  "online_conflict": {
+    "strategy": "add_note_keep_latest",
+    "note_for_latest": "上线日期冲突-自动保留最新",
+    "note_for_old": "历史上线记录(冲突)"
+  }
+} 
