@@ -26,6 +26,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# 固定输出文件名
+OUTPUT_FILENAME = "p16_games.jsonl"
+
 # 16p 基础 URL
 BASE_URL = "https://www.16p.com"
 DEFAULT_TARGET_URL = f"{BASE_URL}/newgame"
@@ -88,25 +91,29 @@ def setup_driver(headless=True):
         print(f"初始化 Edge WebDriver 时发生未知错误: {e}")
         return None
 
-
-def load_existing_links(filepath):
-    """从 JSONL 文件加载已存在的游戏详情页链接 (原始 16p 链接)"""
-    original_links = set()
+# --- 修改：加载 (name, date) 键 --- 
+def load_existing_p16_keys(filepath):
+    """从 JSONL 文件加载已存在的 (游戏名称, 日期) 键"""
+    existing_keys = set()
     if os.path.exists(filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 for line in f:
                     try:
                         data = json.loads(line.strip())
-                        # 始终使用 original_link 进行去重检查
-                        if 'original_link' in data and data['original_link']:
-                            original_links.add(data['original_link'])
+                        name = data.get('name')
+                        date = data.get('date')
+                        if name and date:
+                            # 注意：这里的名称可能需要与后续提取的名称做同样的清理
+                            existing_keys.add((clean_game_name(name), date.strip()))
                     except json.JSONDecodeError:
                         print(f"警告: 无法解析行: {line.strip()}")
-            print(f"从 {filepath} 加载了 {len(original_links)} 个已存在的原始链接。")
+                    except Exception as parse_e:
+                        print(f"警告: 解析行时出错 ({line.strip()}): {parse_e}")
+            print(f"从 {filepath} 加载了 {len(existing_keys)} 个已存在的 (名称, 日期) 键。")
         except Exception as e:
-            print(f"读取已存在链接文件时出错 ({filepath}): {e}")
-    return original_links
+            print(f"读取已存在键文件时出错 ({filepath}): {e}")
+    return existing_keys
 
 def scroll_to_bottom(driver, max_attempts=5, scroll_pause_time=2):
     """滚动到页面底部以确保动态内容加载"""
@@ -133,17 +140,27 @@ def scroll_to_bottom(driver, max_attempts=5, scroll_pause_time=2):
 def clean_game_name(name):
     """清理游戏名称，移除可能的后缀"""
     if not name: return "未知名称"
-    return name.split("-", 1)[0].strip() if "-" in name else name.strip()
-
+    # 移除常见的测试/版本后缀，然后去除-及之后的部分
+    cleaned = re.sub(r'\s*\(?（?(?:不删档|付费)?(?:测试|首发|上线)[)）]?\s*$', '', str(name))
+    cleaned = cleaned.split("-", 1)[0].strip() 
+    return cleaned if cleaned else str(name).strip() # 如果清理后为空，返回原始剥离空格的名称
 
 def format_game_category(category_text):
     """格式化游戏类型文本"""
     if not category_text or category_text == "未知类型": return "未知类型"
     normalized = re.sub(r'[,，、/|]+', '/', category_text) # 统一分隔符
     categories = [cat.strip() for cat in normalized.split('/') if cat.strip()]
-    if categories and any(keyword in categories[0] for keyword in ["近期", "热门", "期待"]):
-        categories = categories[1:]
-    return "/".join(categories[:3]) if categories else "未知类型"
+    
+    # --- 修改开始：过滤掉特定关键词 ---
+    keywords_to_exclude = {"近期", "热门", "期待"} # 使用集合以便快速查找
+    filtered_categories = [cat for cat in categories if not any(keyword in cat for keyword in keywords_to_exclude)]
+    # --- 修改结束 ---
+    
+    # if categories and any(keyword in categories[0] for keyword in ["近期", "热门", "期待"]):
+    #     categories = categories[1:] # 旧逻辑：只移除第一个包含关键词的标签
+
+    # 使用过滤后的列表，取最多3个
+    return "/".join(filtered_categories[:3]) if filtered_categories else "未知类型"
 
 
 def identify_source_from_url(url):
@@ -486,8 +503,8 @@ def get_game_details(driver, game_url, list_page_icon_url=None):
 
     return description, category, rating, external_link, source, icon_url
 
-
-def process_game_item(original_16p_link, basic_info, list_page_icon_url, output_path, existing_original_links):
+# --- 修改：移除 existing_original_links 参数 --- 
+def process_game_item(original_16p_link, basic_info, list_page_icon_url, output_path):
     """
     单个游戏条目的处理函数（在线程中运行）
     返回: 成功处理的数据字典或 None
@@ -529,12 +546,10 @@ def process_game_item(original_16p_link, basic_info, list_page_icon_url, output_
             "source": final_source
         }
 
-        # 在写入前最后检查一次是否已存在（理论上主线程已过滤，但多一层保险）
-        # 注意：这里的 existing_original_links 是主线程传过来的副本，可能不是最新的，
-        # 但主线程的过滤已经足够。这里主要是为了逻辑完整。
-        if original_16p_link in existing_original_links:
-             print(f"[线程 {thread_id}] 链接 {original_16p_link} 在处理过程中发现已存在，取消写入。")
-             return None
+        # --- 移除线程内的重复检查 ---
+        # if original_16p_link in existing_original_links:
+        #      print(f"[线程 {thread_id}] 链接 {original_16p_link} 在处理过程中发现已存在，取消写入。")
+        #      return None
 
         # 写入文件（加锁）
         with file_lock:
@@ -563,14 +578,14 @@ def process_game_item(original_16p_link, basic_info, list_page_icon_url, output_
 
 def get_16p_data(target_url=DEFAULT_TARGET_URL):
     """
-    获取指定 URL (16p 开测表) 的国内游戏信息 (多线程优化版)。
+    获取指定 URL (16p 开测表) 的国内游戏信息 (多线程优化版, 使用 (name, date) 缓存)。
     """
-    print(f"开始抓取 16p 页面 {target_url} 的国内游戏信息 (多线程模式, Max Workers: {MAX_WORKERS})...")
-    output_filename = f'p16_games_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl' # Consistent prefix
-    output_path = os.path.join(DATA_DIR, output_filename)
+    print(f"开始处理 16p 页面 {target_url} 的国内游戏信息 (写入 {OUTPUT_FILENAME})...")
+    # 修改：使用固定文件名
+    output_path = os.path.join(DATA_DIR, OUTPUT_FILENAME)
 
-    # 1. 加载已存在的原始链接用于去重
-    existing_original_links = load_existing_links(output_path)
+    # 1. 加载已存在的 (名称, 日期) 键用于去重
+    existing_keys = load_existing_p16_keys(output_path)
 
     main_driver = setup_driver(headless=True)
     if not main_driver:
@@ -579,6 +594,7 @@ def get_16p_data(target_url=DEFAULT_TARGET_URL):
 
     tasks_submitted = 0
     items_to_process = []
+    skipped_due_to_cache = 0 # 新增：记录因缓存跳过的数量
 
     try:
         main_driver.get(target_url)
@@ -599,6 +615,7 @@ def get_16p_data(target_url=DEFAULT_TARGET_URL):
                 print("  已选中 '国内游戏'.")
         except Exception as e:
             print(f"选择 '国内游戏' 标签时出错: {e}")
+            main_driver.quit() # 关闭浏览器
             return 0 # 关键步骤失败，退出
 
         # 3. 等待并滚动页面
@@ -618,50 +635,85 @@ def get_16p_data(target_url=DEFAULT_TARGET_URL):
 
         if not daily_blocks:
             print("警告：未找到任何日期区块。")
+            main_driver.quit() # 关闭浏览器
             return 0
 
         for day_block in daily_blocks:
             current_date_str = "未知日期"
             try:
                 date_element = safe_find_element(day_block, By.CSS_SELECTOR, "div.date_panel span:first-child")
-                if date_element: current_date_str = date_element.text.strip()
-                print(f"\n处理日期: {current_date_str} ---")
+                if date_element: 
+                    # 尝试解析和格式化日期为 YYYY-MM-DD
+                    raw_date_text = date_element.text.strip()
+                    try:
+                        # 假设格式是 MM月DD日 或类似
+                        match = re.match(r'(\d{1,2})月(\d{1,2})日', raw_date_text)
+                        if match:
+                           month, day = int(match.group(1)), int(match.group(2))
+                           # 假设是当前年份，或根据上下文判断
+                           year = datetime.now().year 
+                           current_date_str = f"{year:04d}-{month:02d}-{day:02d}"
+                        else:
+                           # 如果格式不匹配，尝试其他格式或保留原始文本
+                           # --- 修改：增加对 YYYY-MM-DD 格式的检查 --- 
+                           if re.match(r'^\d{4}-\d{2}-\d{2}$', raw_date_text.strip()):
+                               current_date_str = raw_date_text.strip() # 已经是正确格式
+                           else:
+                               # --- 修改结束 ---
+                               current_date_str = raw_date_text # Fallback to raw text
+                               # 只有在真的无法识别时才打印警告
+                               print(f"  日期格式无法解析为 YYYY-MM-DD: {raw_date_text}")
+                    except Exception:
+                        current_date_str = raw_date_text # 保留原始文本
+                print(f"\n处理日期: {current_date_str} --- ({raw_date_text})")
             except Exception as e:
                 print(f"  提取日期时出错: {e}")
+                current_date_str = "未知日期" # 确保有值
 
             game_elements = safe_find_elements(day_block, By.CSS_SELECTOR, "div.game-items a.game-item")
             if not game_elements:
                 print(f"  日期 {current_date_str} 未找到游戏条目。")
                 continue
 
-            print(f"  找到 {len(game_elements)} 个游戏条目。")
+            # print(f"  找到 {len(game_elements)} 个游戏条目。") # 移除笼统的日志
+            found_in_date_block = 0
+            skipped_in_date_block = 0
 
             for index, game_element in enumerate(game_elements):
                 original_16p_link = None
-                basic_info = {"platform": "国内游戏", "date": current_date_str}
+                # 确保日期有默认值
+                basic_info = {"platform": "国内游戏", "date": current_date_str if current_date_str != "未知日期" else ""} 
                 list_page_icon_url = None
+                game_name = "未知名称"
 
                 try:
-                    # 提取原始链接
+                    # 提取名称 (先于链接，用于缓存检查)
+                    name_element = safe_find_element(game_element, By.CSS_SELECTOR, "div.right-section div.game-info-1 span")
+                    if name_element:
+                         raw_name = name_element.text.strip()
+                         game_name = clean_game_name(raw_name)
+                         basic_info["name"] = game_name # 存入 basic_info
+                    else:
+                        print(f"    警告: 条目 {index + 1} 未找到名称。")
+                        # 可以选择跳过或继续，这里选择继续，但缓存检查可能失效
+
+                    # --- 修改：检查 (名称, 日期) 是否已存在 --- 
+                    current_key = (game_name, current_date_str)
+                    if current_key in existing_keys:
+                        # print(f"    键 {current_key} 已存在，跳过。") # 保持安静，只在最后总结
+                        skipped_in_date_block += 1
+                        skipped_due_to_cache += 1
+                        continue
+
+                    # 提取原始链接 (仅当缓存未命中时需要)
                     href = safe_get_attribute(game_element, 'href')
                     if href:
                         original_16p_link = urljoin(BASE_URL, href)
                     else:
-                        print(f"    警告: 条目 {index + 1} 未找到链接，跳过。")
+                        print(f"    警告: 条目 {index + 1} (名称: {game_name}) 未找到链接，无法处理，跳过。")
                         continue
 
-                    # --- 检查链接是否已存在 ---
-                    if original_16p_link in existing_original_links:
-                        # print(f"    链接 {original_16p_link} 已存在，跳过。")
-                        continue
-
-                    # --- 提取列表页信息 ---
-                    # 名称
-                    name_element = safe_find_element(game_element, By.CSS_SELECTOR, "div.right-section div.game-info-1 span")
-                    if name_element:
-                         raw_name = name_element.text.strip()
-                         basic_info["name"] = clean_game_name(raw_name)
-
+                    # --- 提取列表页其他信息 (缓存未命中时执行) ---
                     # 厂商/发行
                     info2_element = safe_find_element(game_element, By.CSS_SELECTOR, "div.right-section div.game-info-2")
                     if info2_element:
@@ -671,11 +723,14 @@ def get_16p_data(target_url=DEFAULT_TARGET_URL):
                         elif "厂商：" in info_text: # 兼容中文冒号
                              basic_info["publisher"] = info_text.split('厂商：', 1)[1].strip()
 
-
                     # 状态
                     status_element = safe_find_element(game_element, By.CSS_SELECTOR, "div.right-section div.test_type span.test_type_tag")
                     if status_element:
                         basic_info["status"] = status_element.text.strip()
+                    else: # 尝试备用状态提取
+                        status_alt_element = safe_find_element(game_element, By.CSS_SELECTOR, ".game-info-3 span, .game-status")
+                        if status_alt_element:
+                             basic_info["status"] = status_alt_element.text.strip()
 
                     # 尝试提取列表页图标
                     list_page_icon_url = get_icon_from_list_item(game_element)
@@ -684,37 +739,47 @@ def get_16p_data(target_url=DEFAULT_TARGET_URL):
                     # 添加到待处理列表
                     items_to_process.append({
                         "link": original_16p_link,
-                        "basic_info": basic_info,
+                        "basic_info": basic_info, # 包含 name, date, publisher, status, platform
                         "icon": list_page_icon_url
                     })
                     tasks_submitted += 1
+                    found_in_date_block += 1
+                    # 修改：打印更详细的新任务日志
+                    print(f"    [待处理 {found_in_date_block}] 添加新任务: {current_key}") 
 
                 except Exception as e:
-                    print(f"    提取条目 {index + 1} 基本信息时出错: {e}")
+                    print(f"    提取条目 {index + 1} 基本信息或检查缓存时出错: {e}")
 
-        print(f"\n任务收集完毕，共找到 {tasks_submitted} 个新游戏条目待处理。")
+            # 添加日期区块总结日志
+            print(f"  日期 {current_date_str}: 发现 {len(game_elements)} 条记录, 添加 {found_in_date_block} 个新任务 (跳过 {skipped_in_date_block} 个已缓存).") 
+
+        print(f"\n任务收集完毕，共找到 {tasks_submitted} 个新游戏条目待处理。跳过 {skipped_due_to_cache} 个已存在条目。")
 
     except Exception as e:
         print(f"主流程发生错误: {e}")
-        return 0 # 主流程错误，直接返回
+        # 在 finally 中关闭浏览器
     finally:
         if main_driver:
-            main_driver.quit()
-            print("主浏览器已关闭。")
+            try:
+                main_driver.quit()
+                print("主浏览器已关闭。")
+            except Exception as quit_e:
+                 print(f"关闭主浏览器时出错: {quit_e}")
 
-    # --- 5. 使用线程池处理任务 ---
+    # --- 5. 使用线程池处理任务 --- 
     newly_scraped_count = 0
     if not items_to_process:
         print("没有新的游戏条目需要处理。")
-        return 0
+        return 0 # 直接返回新增数量 0
 
-    # 将最新的已存在链接集合传递给工作线程
-    current_existing_links = existing_original_links.copy()
+    # --- 修改：移除 existing_links 传递 --- 
+    # current_existing_links = existing_keys.copy()
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         # 提交所有任务
+        # --- 修改：移除 existing_links 参数 ---
         future_to_item = {
-            executor.submit(process_game_item, item["link"], item["basic_info"], item["icon"], output_path, current_existing_links): item["link"]
+            executor.submit(process_game_item, item["link"], item["basic_info"], item["icon"], output_path): item["link"]
             for item in items_to_process
         }
 
@@ -729,23 +794,26 @@ def get_16p_data(target_url=DEFAULT_TARGET_URL):
                 result_data = future.result() # 获取线程返回的数据
                 if result_data:
                     newly_scraped_count += 1
-                    # 注意：这里不再需要更新 existing_original_links，因为写入已在线程内完成
-                    # 如果需要实时更新主线程的集合，需要更复杂的线程安全机制
+                    # 添加新处理成功的键到内存缓存（如果需要实时避免重复提交，但这里过滤已在提交前完成）
+                    # new_key = (result_data.get('name'), result_data.get('date'))
+                    # if new_key[0] and new_key[1]:
+                    #     existing_keys.add(new_key) 
                 # 打印进度
                 if processed_count % 10 == 0 or processed_count == total_tasks:
-                     print(f"  处理进度: {processed_count}/{total_tasks} (新增: {newly_scraped_count})")
+                     print(f"  处理进度: {processed_count}/{total_tasks} (新增: {newly_scraped_count})", end='\r') # 使用\r覆盖
 
             except Exception as exc:
-                print(f"  处理链接 {original_link} 时线程产生异常: {exc}")
+                print(f"\n  处理链接 {original_link} 时线程产生异常: {exc}")
 
-    print(f"\n16p 页面 {target_url} 抓取完成。")
+    print(f"\n\n16p 页面 {target_url} 处理完成。") # 换行以清除进度条
     print(f"总共提交 {tasks_submitted} 个新游戏条目进行处理。")
-    print(f"本次运行成功新增 {newly_scraped_count} 条数据到 {output_filename}。")
+    print(f"因 (名称, 日期) 已存在而跳过 {skipped_due_to_cache} 个条目。")
+    print(f"本次运行成功新增 {newly_scraped_count} 条数据到 {OUTPUT_FILENAME}。")
 
     return newly_scraped_count
 
 
-# --- 主程序入口 ---
+# --- 主程序入口 --- 
 if __name__ == "__main__":
     start_time = time.time()
     print(f"\n === 开始 16p 国内开测表抓取 ({DEFAULT_TARGET_URL}) === \n")
@@ -753,4 +821,5 @@ if __name__ == "__main__":
     end_time = time.time()
     print(f"\n === 抓取完成 ({DEFAULT_TARGET_URL}) === ")
     print(f"本次运行新增 {new_items_count} 条数据。")
+    print(f"完整数据保存在 {os.path.join(DATA_DIR, OUTPUT_FILENAME)} 文件中。") 
     print(f"总耗时: {end_time - start_time:.2f} 秒。")

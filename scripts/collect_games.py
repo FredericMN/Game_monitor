@@ -288,50 +288,73 @@ def _deduplicate_games(combined_games, locked_records):
     duplicates_info = {'skipped_locked_conflict': 0, 'replaced_by_source': 0, 'replaced_by_richness': 0, 'kept_existing': 0}
     
     # 1. Locked records have highest priority
-    processed_keys = set(locked_records.keys())
-    unique_milestones.update(locked_records)
+    processed_keys = set(locked_records.keys()) # Keys from locked records
+    unique_milestones.update(locked_records)    # Add locked records first
     logging.info(f"保留 {len(locked_records)} 条锁定记录。")
     
-    # 2. Process remaining games
-    games_to_process = [g for g in combined_games if (g.get('cleaned_name'), g.get('date', '0000-00-00')) not in processed_keys]
-    logging.info(f"处理 {len(games_to_process)} 条非锁定记录... ")
-    
+    # 2. Process remaining games - Refined Filtering
+    # Filter out games whose keys ALREADY match a locked key more explicitly
+    games_to_process = []
+    keys_added_to_process = set() # Track keys of non-locked items we decide to process
+
+    for g in combined_games:
+        # Ensure cleaned_name exists for key calculation, especially for new data
+        name_for_key = g.get('cleaned_name')
+        if not name_for_key:
+             name_for_key = clean_game_name(g.get('name'))
+             if 'cleaned_name' not in g: # Store back if newly calculated
+                 g['cleaned_name'] = name_for_key
+
+        date_for_key = g.get('date', '0000-00-00')
+        current_key = (name_for_key, date_for_key)
+
+        is_locked_key = current_key in processed_keys
+
+        # Only add if the key doesn't belong to a locked record
+        # AND we haven't already added another non-locked record with the same key
+        if not is_locked_key:
+            if current_key not in keys_added_to_process:
+                games_to_process.append(g)
+                keys_added_to_process.add(current_key)
+            # else: # Debugging log (optional): Found another non-locked item with the same key, skipping.
+            #    logging.debug(f"过滤步骤：跳过重复的非锁定键 {current_key} 来自记录: {g.get('name')}")
+
+    logging.info(f"筛选后准备处理 {len(games_to_process)} 条候选记录 (非锁定且键唯一)。") # Log count after filtering
+
+    # 3. Process the filtered list
     for game in games_to_process:
-        # Ensure cleaned_name exists
+        # We no longer need to check if 'key in processed_keys' here,
+        # because the filtering step above should have removed all conflicts with locked keys.
+        # Ensure cleaned_name exists (might be redundant but safe)
         if 'cleaned_name' not in game:
             game['cleaned_name'] = clean_game_name(game.get('name'))
-            
+
         name = game.get('cleaned_name')
         date = game.get('date', '0000-00-00')
         key = (name, date)
-        
-        # Should not happen based on pre-filtering, but double-check
-        if key in processed_keys: 
-             duplicates_info['skipped_locked_conflict'] += 1
-             logging.warning(f"发现非锁定记录 {key} 与已处理的锁定键冲突，跳过。这不应发生。")
-             continue 
-             
+
+        # The key should either be new or already exist from another non-locked record added in this loop
         if key not in unique_milestones:
             unique_milestones[key] = game
-            processed_keys.add(key)
         else:
+            # This is the intended deduplication for non-locked items with the same key
             existing_game = unique_milestones[key]
             new_source = game.get('source', '').strip().lower()
             existing_source = existing_game.get('source', '').strip().lower()
-            
-            logging.debug(f"去重检查: Key={key}")
+
+            logging.debug(f"去重检查 (非锁定间): Key={key}")
             logging.debug(f"  新记录: source='{new_source}', status='{game.get('status')}'")
-            logging.debug(f"  旧记录: source='{existing_source}', status='{existing_game.get('status')}'")
-            
+            logging.debug(f"  旧记录 (已保留的非锁定): source='{existing_source}', status='{existing_game.get('status')}'")
+
             replaced = False
-            reason = "Kept Existing"
+            reason = "Kept Existing Non-Locked"
 
             # Apply Source Priority
             new_priority = -1
             existing_priority = -1
-            try: new_priority = source_priority_list.index(new_source) 
+            try: new_priority = source_priority_list.index(new_source)
             except ValueError: pass
-            try: existing_priority = source_priority_list.index(existing_source) 
+            try: existing_priority = source_priority_list.index(existing_source)
             except ValueError: pass
 
             if new_priority != -1 and (existing_priority == -1 or new_priority < existing_priority):
@@ -367,14 +390,14 @@ def _deduplicate_games(combined_games, locked_records):
                  replaced = False
                  reason = "Kept Existing (No Deciding Rule)"
                  duplicates_info['kept_existing'] += 1
-                 
-            # logging.debug(f"  最终: {reason}") # Simplified log below
 
     final_list = list(unique_milestones.values())
+    # Note: 'skipped_locked_conflict' count is no longer relevant with the new filtering logic
     total_processed_duplicates = duplicates_info['replaced_by_source'] + duplicates_info['replaced_by_richness'] + duplicates_info['kept_existing']
     logging.info(f"去重完成。最终保留 {len(final_list)} 条记录。")
-    logging.info(f"  去重统计: 因锁定跳过={duplicates_info['skipped_locked_conflict']}, 按来源替换={duplicates_info['replaced_by_source']}, 按丰富度替换={duplicates_info['replaced_by_richness']}, 保留旧记录={duplicates_info['kept_existing']} (总冲突处理={total_processed_duplicates})" )
-    
+    # Removed skipped_locked_conflict from the final log message
+    logging.info(f"  去重统计 (非锁定记录间): 按来源替换={duplicates_info['replaced_by_source']}, 按丰富度替换={duplicates_info['replaced_by_richness']}, 保留旧记录={duplicates_info['kept_existing']} (总冲突处理={total_processed_duplicates})" )
+
     return final_list
 
 def _resolve_online_conflicts(games_list):
@@ -444,8 +467,14 @@ def _resolve_online_conflicts(games_list):
                          old_record['manual_checked'] = f"{existing_note_old}; {note_old}"
                     elif not existing_note_old:
                          old_record['manual_checked'] = note_old
+
+                    # --- 修改开始 ---
+                    # 设置旧记录的状态为"未知状态"
+                    old_record['status'] = "未知状态"
+                    logging.info(f"      状态已修改为 '未知状态'")
+                    # --- 修改结束 ---
                     
-                    # Option 2: Change status (if status_old is defined in config)
+                    # Option 2: Change status (if status_old is defined in config) - 这部分逻辑被新的硬编码状态取代
                     # status_old_cfg = cfg.get('change_status_for_old') 
                     # if status_old_cfg:
                     #     logging.info(f"      状态从 '{status_online}' 修改为 '{status_old_cfg}'")
@@ -544,51 +573,71 @@ def _load_excel_data(master_excel_file, excel_columns_map):
     return all_excel_records, locked_records, excel_feature_flags
 
 def _fetch_new_data(fetch_taptap, fetch_16p):
-    """根据选择调用爬虫并加载新数据"""
+    """根据选择调用爬虫并加载新数据 (适配固定文件名)"""
     newly_fetched_games = []
     current_date_str = datetime.now().strftime("%Y-%m-%d")
+    taptap_output_file = os.path.join(data_dir, 'taptap_games.jsonl')
+    p16_output_file = os.path.join(data_dir, 'p16_games.jsonl')
 
     if fetch_taptap and fetch_taptap_func:
         logging.info("--- 开始获取 TapTap 数据 --- ")
         try:
-            taptap_new_count = fetch_taptap_func(current_date_str)
-            if taptap_new_count > 0:
-                taptap_file = os.path.join(data_dir, f'taptap_games_{current_date_str}.jsonl')
-                if os.path.exists(taptap_file):
-                    with open(taptap_file, 'r', encoding='utf-8') as f_tap:
-                        tap_games_list = [json.loads(line) for line in f_tap]
-                    logging.info(f"成功从 TapTap ({current_date_str}) 获取 {len(tap_games_list)} 条新数据。")
-                    newly_fetched_games.extend(tap_games_list)
-                else: logging.warning(f"TapTap 脚本报告成功，但未找到文件: {taptap_file}")
-            else: logging.info(f"TapTap ({current_date_str}) 未获取到新数据或脚本返回0。")
-        except Exception as e: logging.error(f"获取 TapTap 数据时出错: {e}", exc_info=True)
+            # 运行 TapTap 爬虫，它会追加到 taptap_games.jsonl
+            taptap_new_count_reported = fetch_taptap_func(current_date_str)
+            # 不再依赖返回值来决定是否读取，总是尝试读取并过滤
+            if os.path.exists(taptap_output_file):
+                tap_games_today = []
+                with open(taptap_output_file, 'r', encoding='utf-8') as f_tap:
+                    for line in f_tap:
+                        try:
+                            game = json.loads(line)
+                            # 筛选出当天的数据
+                            if game.get('date') == current_date_str:
+                                tap_games_today.append(game)
+                        except json.JSONDecodeError:
+                             logging.warning(f"解析 taptap_games.jsonl 时跳过无效行: {line.strip()}")
+                
+                if tap_games_today:
+                     logging.info(f"从 TapTap 文件 ({taptap_output_file}) 加载并筛选出 {len(tap_games_today)} 条与日期 {current_date_str} 相关的数据。")
+                     newly_fetched_games.extend(tap_games_today)
+                else:
+                     logging.info(f"TapTap 文件 ({taptap_output_file}) 中未找到与日期 {current_date_str} 相关的数据。爬虫报告新增 {taptap_new_count_reported} 条。")
+            else: 
+                # 文件本身不存在，说明爬虫可能从未成功运行或文件被删除
+                logging.warning(f"TapTap 数据文件 {taptap_output_file} 不存在。即使爬虫报告成功({taptap_new_count_reported}条)，也无法加载数据。")
+                
+        except Exception as e: logging.error(f"获取或处理 TapTap 数据时出错: {e}", exc_info=True)
     elif fetch_taptap: logging.warning("TapTap 模块未加载，跳过爬取。")
     else: logging.info("根据用户选择，跳过 TapTap 数据获取。")
 
     if fetch_16p and fetch_16p_func:
         logging.info("--- 开始获取 16p (好游快爆/AppStore) 数据 --- ")
         try:
-            p16_new_count = fetch_16p_func()
-            if p16_new_count > 0:
-                # Find the latest p16 file (assuming naming convention)
-                p16_files = sorted([f for f in os.listdir(data_dir) if f.startswith('p16_games_') and f.endswith('.jsonl')], reverse=True)
-                if p16_files:
-                    latest_p16_file = os.path.join(data_dir, p16_files[0])
-                    with open(latest_p16_file, 'r', encoding='utf-8') as f_16p:
-                         p16_games_list = [json.loads(line) for line in f_16p]
-                    logging.info(f"成功从 16p ({p16_files[0]}) 获取 {len(p16_games_list)} 条新数据。")
-                    # Ensure date field is present (using status_date or current as fallback)
-                    for game in p16_games_list:
-                        if 'date' not in game or not game['date']: 
-                             game['date'] = game.get('status_date') or current_date_str
-                    newly_fetched_games.extend(p16_games_list)
-                else: logging.warning(f"16p 脚本报告成功，但未在 data 目录找到 p16_games 文件。")
-            else: logging.info("16p 未获取到新数据或脚本返回0。")
-        except Exception as e: logging.error(f"获取 16p 数据时出错: {e}", exc_info=True)
+            # 运行 16p 爬虫，它会追加到 p16_games.jsonl
+            p16_new_count_reported = fetch_16p_func()
+            # 不再依赖返回值或查找最新文件，直接读取固定文件
+            if os.path.exists(p16_output_file):
+                with open(p16_output_file, 'r', encoding='utf-8') as f_16p:
+                     # 加载所有 p16 数据，让后续去重逻辑处理
+                     p16_all_games = [json.loads(line) for line in f_16p]
+                
+                if p16_all_games:
+                     logging.info(f"从 16p 文件 ({p16_output_file}) 加载了 {len(p16_all_games)} 条数据。")
+                     # 确保日期字段存在 (虽然爬虫现在应该会处理)
+                     for game in p16_all_games:
+                         if 'date' not in game or not game['date']:
+                             game['date'] = game.get('status_date') or current_date_str # 沿用之前的备用逻辑
+                     newly_fetched_games.extend(p16_all_games)
+                else:
+                    logging.info(f"16p 文件 ({p16_output_file}) 为空。爬虫报告新增 {p16_new_count_reported} 条。")
+            else: 
+                 logging.warning(f"16p 数据文件 {p16_output_file} 不存在。即使爬虫报告成功({p16_new_count_reported}条)，也无法加载数据。")
+                
+        except Exception as e: logging.error(f"获取或处理 16p 数据时出错: {e}", exc_info=True)
     elif fetch_16p: logging.warning("16p 模块未加载，跳过爬取。")
     else: logging.info("根据用户选择，跳过 16p 数据获取。")
 
-    logging.info(f"总共获取到 {len(newly_fetched_games)} 条新游戏数据。")
+    logging.info(f"总共获取到 {len(newly_fetched_games)} 条待处理的新游戏数据。") # 这是合并后的列表
     return newly_fetched_games
     
 def _run_version_matching(games_list, locked_records, description="数据"):

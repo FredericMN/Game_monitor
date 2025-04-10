@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import collections # Add this import at the top
 
 # 并发工作线程数 (可以根据机器性能调整)
-MAX_MATCH_WORKERS = 1 # Adjusted for potentially longer individual queries
+MAX_MATCH_WORKERS = 3 # Adjusted for potentially longer individual queries
 
 # --- 缓存配置 ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
