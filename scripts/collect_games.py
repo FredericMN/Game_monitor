@@ -407,100 +407,113 @@ def _resolve_online_conflicts(games_list):
     strategy = cfg.get('strategy', 'log_only') # Default to just logging if not specified
     note_latest = cfg.get('note_for_latest', '冲突-最新上线')
     note_old = cfg.get('note_for_old', '历史上线(冲突)')
-    # status_old = cfg.get('change_status_for_old') # Optional: change status instead of note
+    appstore_source_name = cfg.get('appstore_source_identifier', 'appstore').lower() # Configurable AppStore source name
 
     if strategy == 'disabled':
         logging.info("上线冲突处理已禁用。")
         return games_list
 
-    # Group games by name (assuming name is the primary identifier for a game)
     games_grouped = {}
     for game in games_list:
-        # Use cleaned_name if available, otherwise clean again
         name = game.get('cleaned_name') or clean_game_name(game.get('name'))
-        if 'cleaned_name' not in game: game['cleaned_name'] = name # Ensure it exists
-        
+        if 'cleaned_name' not in game: game['cleaned_name'] = name
         if name not in games_grouped:
             games_grouped[name] = []
         games_grouped[name].append(game)
 
     conflict_resolved_count = 0
-    processed_list_after_conflict = [] # Build the final list here
+    final_processed_list = [] # Use a new list for the final output
 
-    for name, group in games_grouped.items():
-        # Find records with '上线' status within the group
-        # Use configured status value for online
+    for name, original_group in games_grouped.items():
         status_online = CONFIG.get('status_standardization', {}).get('status_online', '上线')
-        online_records = [g for g in group if g.get('status') == status_online]
+        
+        # Make a copy of the group to potentially modify
+        current_group = list(original_group)
+        
+        # Initial check for online records in the current group state
+        online_records = [g for g in current_group if g.get('status') == status_online]
 
         if len(online_records) > 1:
             logging.warning(f"游戏 '{name}' 发现 {len(online_records)} 条上线记录冲突: {[g.get('date') for g in online_records]}")
             conflict_resolved_count += 1
 
-            if strategy == 'log_only':
-                logging.info(f"  策略 '{strategy}': 仅记录冲突，不修改记录。")
-                # Add all records from the group to the final list without modification
-                processed_list_after_conflict.extend(group)
-                continue # Move to the next group
-            
-            elif strategy == 'add_note_keep_latest':
-                logging.info(f"  策略 '{strategy}': 保留最新日期记录，为冲突记录添加备注。")
-                # Sort online records by date, latest first
-                online_records.sort(key=lambda g: g.get('date', '0000-00-00'), reverse=True)
-                
-                latest_online_record = online_records[0]
-                logging.info(f"    保留最新上线记录: {latest_online_record.get('date')}")
-                # Add note to the latest record's manual_checked field
-                # Append note if field already has content, otherwise set it
-                existing_note_latest = latest_online_record.get('manual_checked', '')
-                if existing_note_latest and note_latest not in existing_note_latest:
-                     latest_online_record['manual_checked'] = f"{existing_note_latest}; {note_latest}"
-                elif not existing_note_latest:
-                     latest_online_record['manual_checked'] = note_latest
-                
-                # Process older online records
-                for old_record in online_records[1:]:
-                    logging.info(f"    处理旧上线记录: {old_record.get('date')}")
-                    # Option 1: Add note to manual_checked (current default in config)
-                    existing_note_old = old_record.get('manual_checked', '')
-                    if existing_note_old and note_old not in existing_note_old:
-                         old_record['manual_checked'] = f"{existing_note_old}; {note_old}"
-                    elif not existing_note_old:
-                         old_record['manual_checked'] = note_old
+            # --- 新增逻辑: 处理 AppStore 来源冲突 --- 
+            appstore_online_records = [g for g in online_records if g.get('source', '').lower() == appstore_source_name]
+            non_appstore_online_records = [g for g in online_records if g.get('source', '').lower() != appstore_source_name]
+            appstore_removed_count = 0
 
-                    # --- 修改开始 ---
-                    # 设置旧记录的状态为"未知状态"
-                    old_record['status'] = "未知状态"
-                    logging.info(f"      状态已修改为 '未知状态'")
-                    # --- 修改结束 ---
-                    
-                    # Option 2: Change status (if status_old is defined in config) - 这部分逻辑被新的硬编码状态取代
-                    # status_old_cfg = cfg.get('change_status_for_old') 
-                    # if status_old_cfg:
-                    #     logging.info(f"      状态从 '{status_online}' 修改为 '{status_old_cfg}'")
-                    #     old_record['status'] = status_old_cfg
-                
-                # Add all records from the group (potentially modified) to the final list
-                processed_list_after_conflict.extend(group)
-            
-            # Add other strategies here if needed
-            # elif strategy == 'other_strategy':
-            #     ...
-            
-            else:
-                 logging.warning(f"  未知的上线冲突处理策略: '{strategy}'。不修改记录。")
-                 processed_list_after_conflict.extend(group)
+            if appstore_online_records and non_appstore_online_records:
+                 logging.info(f"  检测到 AppStore 与其他来源的上线冲突。正在移除 {len(appstore_online_records)} 条 AppStore 上线记录。")
+                 # Create a new group excluding the conflicting AppStore records
+                 indices_to_remove = {current_group.index(g) for g in appstore_online_records if g in current_group}
+                 new_group = [g for i, g in enumerate(current_group) if i not in indices_to_remove]
+                 appstore_removed_count = len(current_group) - len(new_group)
+                 current_group = new_group # Update the group being processed
+                 # Re-evaluate online records after removal
+                 online_records = [g for g in current_group if g.get('status') == status_online]
+                 logging.info(f"  移除 AppStore 记录后，剩余 {len(online_records)} 条上线记录待处理。")
+            # --- AppStore 逻辑结束 ---
+
+            # --- 继续处理剩余的上线冲突 (如果还有 > 1条) --- 
+            if len(online_records) > 1: 
+                 # Check strategy only if there's still a conflict after potential AppStore removal
+                 if strategy == 'log_only':
+                     logging.info(f"  策略 '{strategy}': 仅记录剩余冲突，不修改记录。")
+                     # Add the potentially modified group (with AppStore removed) to the final list
+                     final_processed_list.extend(current_group)
+                     continue # Move to the next group
                  
+                 elif strategy == 'add_note_keep_latest':
+                     logging.info(f"  策略 '{strategy}': 保留剩余冲突中最新日期记录，为其他冲突记录添加备注/改状态。")
+                     # Sort remaining online records by date, latest first
+                     online_records.sort(key=lambda g: g.get('date', '0000-00-00'), reverse=True)
+                     
+                     latest_online_record = online_records[0]
+                     logging.info(f"    保留剩余冲突中的最新上线记录: {latest_online_record.get('date')}")
+                     # Add note to the latest record
+                     existing_note_latest = latest_online_record.get('manual_checked', '')
+                     if existing_note_latest and note_latest not in existing_note_latest:
+                         latest_online_record['manual_checked'] = f"{existing_note_latest}; {note_latest}"
+                     elif not existing_note_latest:
+                         latest_online_record['manual_checked'] = note_latest
+                     
+                     # Process older online records among the remaining ones
+                     for old_record in online_records[1:]:
+                         logging.info(f"    处理剩余冲突中的旧上线记录: {old_record.get('date')}")
+                         # Add note
+                         existing_note_old = old_record.get('manual_checked', '')
+                         if existing_note_old and note_old not in existing_note_old:
+                             old_record['manual_checked'] = f"{existing_note_old}; {note_old}"
+                         elif not existing_note_old:
+                             old_record['manual_checked'] = note_old
+                         # Change status
+                         old_record['status'] = "未知状态"
+                         logging.info(f"      状态已修改为 '未知状态'")
+                     
+                     # Add the modified group (including non-online records and updated online ones) to the final list
+                     final_processed_list.extend(current_group)
+                 
+                 else:
+                     logging.warning(f"  未知的上线冲突处理策略: '{strategy}'。不修改剩余冲突记录。")
+                     final_processed_list.extend(current_group)
+            
+            else: # <= 1 online record after potential AppStore removal, conflict resolved
+                 if appstore_removed_count > 0:
+                      logging.info(f"  移除 AppStore 记录后，上线冲突已解决。")
+                 else: # This case shouldn't be reached if the initial check found > 1, but included for safety
+                      logging.info(f"  冲突检查后无需进一步操作。")
+                 final_processed_list.extend(current_group) # Add the potentially modified group
+
         else:
-            # No conflict in this group, add all its records to the final list
-            processed_list_after_conflict.extend(group)
+            # No initial conflict in this group, add all its records to the final list
+            final_processed_list.extend(current_group)
 
     if conflict_resolved_count > 0:
         logging.info(f"处理了 {conflict_resolved_count} 个游戏的上线日期冲突。")
     else:
         logging.info("未发现上线日期冲突。")
         
-    return processed_list_after_conflict
+    return final_processed_list # Return the newly built list
 
 # --- Data Loading Functions ---
 
