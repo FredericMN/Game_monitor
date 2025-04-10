@@ -31,7 +31,7 @@ BASE_URL = "https://www.16p.com"
 DEFAULT_TARGET_URL = f"{BASE_URL}/newgame"
 
 # 多线程配置
-MAX_WORKERS = 5
+MAX_WORKERS = 3
 
 # 文件写入锁
 file_lock = threading.Lock()

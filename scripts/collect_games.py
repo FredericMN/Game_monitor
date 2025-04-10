@@ -190,15 +190,15 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 # Convert relevant columns back to expected types after reading as string
                 if 'rating' in df_excel.columns: df_excel['rating'] = pd.to_numeric(df_excel['rating'], errors='coerce').fillna(0.0)
                 # Explicitly handle boolean conversion for is_featured and version_checked for *all* records initially
-                is_featured_col_present = 'is_featured' in df_excel.columns
-                version_checked_col_present = 'version_checked' in df_excel.columns
-                manual_checked_col_present = 'manual_checked' in df_excel.columns
+                is_featured_col_present = '是否重点' in df_excel.columns
+                version_checked_col_present = '版号已查' in df_excel.columns
+                manual_checked_col_present = '是否人工校对' in df_excel.columns
 
                 excel_records_list = df_excel.to_dict('records')
 
                 for record in excel_records_list:
-                    name = clean_game_name(record.get('name'))
-                    date_raw = record.get('date')
+                    name = clean_game_name(record.get('名称', ''))
+                    date_raw = record.get('日期')
                     if isinstance(date_raw, datetime): date_str = date_raw.strftime('%Y-%m-%d')
                     elif isinstance(date_raw, str):
                         try: date_str = pd.to_datetime(date_raw).strftime('%Y-%m-%d')
@@ -209,33 +209,35 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                     # --- Check and store 'is_featured' flag for ALL records ---
                     is_featured_excel = False
                     if is_featured_col_present:
-                        is_featured_raw = record.get('is_featured', '')
-                        is_featured_excel = str(is_featured_raw).strip().lower() == '是'
+                        is_featured_raw = record.get('是否重点', '')
+                        is_featured_excel = str(is_featured_raw).strip() == '是'
                     excel_feature_flags[key] = is_featured_excel
                     # --- End feature flag check ---
 
                     # --- Check manual checked status ---
                     is_manually_checked = False
                     if manual_checked_col_present:
-                        manual_checked_raw = record.get('manual_checked', '')
-                        is_manually_checked = str(manual_checked_raw).strip() != ''
+                        manual_checked_raw = record.get('是否人工校对', '')
+                        is_manually_checked = str(manual_checked_raw).strip() == '是'
                     # --- End manual check ---
 
                     if is_manually_checked:
                         # Ensure record has all fields, converting types where needed for locked record
                         full_record = {}
-                        for field in internal_excel_fields:
+                        for field, excel_field in excel_columns_map.items():
                             value = record.get(field)
-                            if field == 'rating': full_record[field] = float(value) if value is not None else 0.0
-                            elif field == 'is_featured': full_record[field] = is_featured_excel # Use parsed boolean
-                            elif field == 'version_checked': full_record[field] = bool(str(record.get('version_checked', '')).strip().lower() == '是') if version_checked_col_present else False
-                            elif field == 'manual_checked': full_record[field] = str(value).strip() if value is not None else "" # Keep as string
-                            else: full_record[field] = str(value).strip() if value is not None else "" # Default to string
+                            if excel_field == 'rating': full_record[excel_field] = float(value) if value is not None else 0.0
+                            elif excel_field == 'is_featured': full_record[excel_field] = str(record.get('是否重点', '')).strip() == '是'
+                            elif excel_field == 'version_checked': full_record[excel_field] = str(record.get('版号已查', '')).strip() == '是' if version_checked_col_present else False
+                            elif excel_field == 'manual_checked': full_record[excel_field] = str(record.get('是否人工校对', '')).strip() if value is not None else ""
+                            else: full_record[excel_field] = str(value).strip() if value is not None else ""
                         full_record['name'] = name # Use cleaned name
                         full_record['date'] = date_str # Use standardized date
                         locked_records[key] = full_record
 
-                logging.info(f"从主 Excel 加载了 {len(locked_records)} 条人工校对记录，并记录了 {len(excel_feature_flags)} 条记录的重点状态。")
+                # 统计实际标记为"是"的重点记录数量 
+                featured_count = sum(1 for flag in excel_feature_flags.values() if flag)
+                logging.info(f"从主 Excel 加载了 {len(locked_records)} 条人工校对记录，并记录了 {featured_count} 条标记为'是'的重点状态。")
 
             except Exception as e:
                 logging.error(f"读取或处理主 Excel 文件 ({master_excel_file}) 时出错: {e}", exc_info=True)
@@ -640,7 +642,10 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
                 # Ensure manual_checked remains string (it should be already)
                 if 'manual_checked' in df_final_excel.columns:
                      df_final_excel['manual_checked'] = df_final_excel['manual_checked'].astype(str).fillna('')
-
+                     # 修改：保留特殊备注信息，只将普通的布尔值或简单非空值转换为"是"
+                     df_final_excel['manual_checked'] = df_final_excel['manual_checked'].apply(
+                         lambda x: '是' if x and x != '' and x.lower() in ['true', 'yes', '1'] else x
+                     )
 
                 df_final_excel.rename(columns={v: k for k, v in cols_map.items()}, inplace=True)
                 df_final_excel.to_excel(master_excel_file, index=False, engine='openpyxl')
