@@ -7,6 +7,7 @@ import random
 import re
 import json # Added for caching
 import threading # Added for cache lock
+from datetime import datetime # 添加用于月份记录
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.edge.service import Service as EdgeService
@@ -27,6 +28,10 @@ os.makedirs(DATA_DIR, exist_ok=True)
 CACHE_FILE = os.path.join(DATA_DIR, 'version_match_cache.jsonl')
 cache_lock = threading.Lock() # Lock for writing to cache file
 
+def get_current_month():
+    """获取当前月份，格式为YYYY-MM"""
+    return datetime.now().strftime("%Y-%m")
+
 def load_version_cache():
     """Loads the version match cache from the JSONL file."""
     cache = {}
@@ -38,8 +43,13 @@ def load_version_cache():
                 try:
                     data = json.loads(line.strip())
                     # Store result keyed by name
-                    if 'name' in data and 'result' in data:
-                        cache[data['name']] = data['result']
+                    if 'name' in data:
+                        # 新结构：包含结果和查询月份
+                        cache_entry = {
+                            'result': data.get('result'),
+                            'query_month': data.get('query_month', get_current_month())  # 默认为当前月份
+                        }
+                        cache[data['name']] = cache_entry
                 except json.JSONDecodeError:
                     print(f"[缓存警告] 无法解析缓存行: {line.strip()}")
         print(f"[缓存] 从 {CACHE_FILE} 加载了 {len(cache)} 条记录。")
@@ -49,15 +59,25 @@ def load_version_cache():
 
 def update_version_cache(game_name, result, cache_dict):
     """Appends a result to the cache file and updates the in-memory cache, thread-safely."""
+    current_month = get_current_month()
+    
     with cache_lock:
         try:
             # Update in-memory cache first
-            cache_dict[game_name] = result
+            cache_dict[game_name] = {
+                'result': result,
+                'query_month': current_month
+            }
+            
             # Append to file
             with open(CACHE_FILE, 'a', encoding='utf-8') as f:
-                json.dump({"name": game_name, "result": result}, f, ensure_ascii=False)
+                json.dump({
+                    "name": game_name, 
+                    "result": result,
+                    "query_month": current_month
+                }, f, ensure_ascii=False)
                 f.write('\n')
-            # print(f"[缓存] 已更新缓存: {game_name} -> {'有结果' if result else '无结果'}")
+            # print(f"[缓存] 已更新缓存: {game_name} -> {'有结果' if result else '无结果'} (查询月份: {current_month})")
         except Exception as e:
             print(f"[缓存错误] 写入缓存时出错 ({game_name}): {e}")
 
@@ -186,15 +206,31 @@ def fetch_single_game_version_info_with_cache(game_name, cache_dict):
     if not game_name or game_name == "未知名称":
         return None
 
-    # 1. Cache Check - Only use if result is not None
-    cached_result = cache_dict.get(game_name)
-    if cached_result is not None: # Crucial: Don't reuse 'None' results
-        # print(f"[缓存命中] 使用缓存结果 for '{game_name}'.")
-        return cached_result
+    current_month = get_current_month()
+    
+    # 1. 缓存检查 - 现在考虑月份信息
+    cached_entry = cache_dict.get(game_name)
+    if cached_entry is not None:
+        cached_result = cached_entry.get('result')
+        cached_month = cached_entry.get('query_month', '2000-01')  # 设定一个很旧的默认月份
+        
+        # 如果有结果，直接使用
+        if cached_result is not None:
+            # print(f"[缓存命中] 使用缓存结果 for '{game_name}'.")
+            return cached_result
+        
+        # 如果没有结果，检查月份是否需要更新
+        if cached_result is None and cached_month == current_month:
+            # 本月已查询过且无结果，不再查询
+            print(f"[版号匹配] '{game_name}' 本月已查询过无结果 ({cached_month})，跳过查询。")
+            return None
+        
+        # 如果是跨月无结果的缓存，需要重新查询
+        print(f"[版号匹配] '{game_name}' 上次查询月份为 {cached_month}，当前为 {current_month}，重新查询。")
+    else:
+        print(f"[版号匹配] '{game_name}' 缓存未命中，进行查询。")
 
-    print(f"[版号匹配] 缓存未命中或无效，查询: '{game_name}'")
-
-    # 2. Perform Query (with space logic)
+    # 2. 执行查询 (包含空格处理)
     final_result = None
     if " " in game_name:
         result1 = _perform_nppa_query(game_name) # Query full name
@@ -212,7 +248,7 @@ def fetch_single_game_version_info_with_cache(game_name, cache_dict):
         # No space, direct query
         final_result = _perform_nppa_query(game_name)
 
-    # 3. Update Cache
+    # 3. 更新缓存 (带月份信息)
     update_version_cache(game_name, final_result, cache_dict)
 
     return final_result
@@ -350,10 +386,13 @@ def cleanup_version_cache(cache_file_path):
             if not line: continue
             try:
                 data = json.loads(line)
-                if 'name' in data and 'result' in data:
-                    # Normalize name slightly for grouping? (e.g., lowercasing)
-                    # Let's keep it as is for now to respect original cache keys
-                    grouped_results[data['name']].append(data['result'])
+                if 'name' in data:
+                    # 保存完整记录，包括查询月份
+                    entry = {
+                        'result': data.get('result'),
+                        'query_month': data.get('query_month', get_current_month())
+                    }
+                    grouped_results[data['name']].append(entry)
                 else:
                     print(f"[缓存清理警告] 跳过格式无效的行: {line}")
             except json.JSONDecodeError:
@@ -374,46 +413,52 @@ def cleanup_version_cache(cache_file_path):
     cleaned_cache_entries = []
     multiple_results_warnings = 0
 
-    for name, results_list in grouped_results.items():
-        non_none_results = [r for r in results_list if r is not None]
-        unique_non_none_results = []
-        seen_keys = set() # Use a generic 'seen keys' set
-
-        if non_none_results:
-            # Filter unique non-None results
-            for result in non_none_results:
-                 # Define a unique key for this result. Use approval_num if present, otherwise hash the dict items.
-                 approval_num = result.get('approval_num')
-                 # Use approval_num as primary key if it exists and is not empty
-                 if approval_num and str(approval_num).strip():
-                     result_key = str(approval_num).strip()
-                 else:
-                    # Fallback: create a hashable representation of the dictionary content for uniqueness check
-                    # Sort items to ensure consistent hashing regardless of dict order
+    for name, entries_list in grouped_results.items():
+        # 按照结果分组
+        non_none_entries = [e for e in entries_list if e['result'] is not None]
+        
+        if non_none_entries:
+            # 有效结果处理，确保唯一性
+            unique_results = {}
+            
+            for entry in non_none_entries:
+                result = entry['result']
+                approval_num = result.get('approval_num', '')
+                
+                if approval_num and str(approval_num).strip():
+                    result_key = str(approval_num).strip()
+                else:
                     try:
-                       result_key = frozenset(sorted(result.items()))
+                        result_key = frozenset(sorted(result.items()))
                     except TypeError:
-                       # Handle unhashable types within the dict if necessary
-                       # For simplicity, treat results with unhashable types as unique for now
-                       result_key = id(result) # Fallback to object ID (less reliable for true content uniqueness)
-                       print(f"[缓存清理警告] 游戏 '{name}' 的结果包含无法哈希的类型，将基于对象ID判断唯一性。")
-
-
-                 if result_key not in seen_keys:
-                     unique_non_none_results.append(result)
-                     seen_keys.add(result_key)
-
-
-            if len(unique_non_none_results) > 1:
-                print(f"[缓存清理警告] 游戏 '{name}' 发现 {len(unique_non_none_results)} 个不同的版号结果，将全部保留。")
-                multiple_results_warnings +=1
-
-            # Keep all unique non-None results
-            for res in unique_non_none_results:
-                cleaned_cache_entries.append({"name": name, "result": res})
+                        result_key = id(result)
+                        print(f"[缓存清理警告] 游戏 '{name}' 的结果包含无法哈希的类型，将基于对象ID判断唯一性。")
+                
+                # 保存最新的月份记录
+                if result_key not in unique_results or entry['query_month'] > unique_results[result_key]['query_month']:
+                    unique_results[result_key] = entry
+            
+            unique_entries = list(unique_results.values())
+            
+            if len(unique_entries) > 1:
+                print(f"[缓存清理警告] 游戏 '{name}' 发现 {len(unique_entries)} 个不同的版号结果，将全部保留。")
+                multiple_results_warnings += 1
+            
+            # 保存所有唯一的非空结果，带月份
+            for entry in unique_entries:
+                cleaned_cache_entries.append({
+                    "name": name, 
+                    "result": entry['result'],
+                    "query_month": entry['query_month']
+                })
         else:
-            # Only None results existed, keep one None entry
-            cleaned_cache_entries.append({"name": name, "result": None})
+            # 只有空结果的情况，保留最新的月份记录
+            latest_entry = max(entries_list, key=lambda e: e['query_month'])
+            cleaned_cache_entries.append({
+                "name": name, 
+                "result": None,
+                "query_month": latest_entry['query_month']
+            })
 
     # Write cleaned results back, overwriting the file
     try:
