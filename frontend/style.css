@@ -702,3 +702,58 @@ body {
     padding-bottom: 10px;
     border-bottom: 2px solid #e0e0e0;
 }
+
+/* --- 新增：周导航模块 (.week-nav) 样式 --- */
+.week-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* 按钮和文字间距 */
+}
+
+.week-nav button {
+    background-color: transparent; /* 透明背景 */
+    border: 1px solid #dcdcdc; /* 浅灰色边框 */
+    color: #555; /* 图标颜色 */
+    padding: 0; /* 移除内边距，由宽高和flex控制 */
+    width: 30px; /* 固定宽度 */
+    height: 30px; /* 固定高度 */
+    border-radius: 50%; /* 圆形按钮 */
+    cursor: pointer;
+    font-size: 1.1em; /* 图标大小 */
+    line-height: 28px; /* 微调使图标垂直居中 */
+    text-align: center;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease; /* 平滑过渡 */
+    display: inline-flex; /* 使用 flex 居中图标 */
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0; /* 防止按钮被压缩 */
+}
+
+.week-nav button:hover {
+    background-color: #f0f0f0; /* 浅灰色悬停背景 */
+    border-color: #bbb; /* 边框颜色加深 */
+    color: #333;
+}
+
+.week-nav button:focus {
+    outline: none; /* 移除默认轮廓 */
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); /* 蓝色聚焦光晕 */
+    border-color: #007bff; /* 聚焦时边框变蓝 */
+}
+
+.week-nav button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: transparent;
+    border-color: #eee;
+}
+
+/* 周范围文字样式 */
+.week-nav #week-range-display {
+    font-size: 0.95em; /* 调整字体大小 */
+    font-weight: 500; /* 中等字重 */
+    color: #444; /* 文字颜色 */
+    padding: 0 5px; /* 左右留白 */
+    min-width: 100px; /* 最小宽度，防止文字跳动 */
+    text-align: center; /* 文字居中 */
+}
