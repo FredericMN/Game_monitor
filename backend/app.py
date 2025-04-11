@@ -151,7 +151,14 @@ def get_games():
     publisher_filter = request.args.get('publisher', None) # 新增厂商过滤参数
     platform_filter = request.args.get('platform', None)
     page = request.args.get('page', default=1, type=int)
-    per_page = request.args.get('per_page', default=15, type=int)
+    # 修改：根据是否有日期过滤调整默认 per_page 值
+    default_per_page = 15
+    start_date_str = request.args.get('start_date', None)
+    end_date_str = request.args.get('end_date', None)
+    if start_date_str or end_date_str:
+        default_per_page = 100 # 如果有日期过滤，默认获取更多条目
+
+    per_page = request.args.get('per_page', default=default_per_page, type=int)
 
     # 根据参数过滤数据
     filtered_data = game_data
@@ -210,6 +217,21 @@ def get_games():
                 search_lower in str(game.get('publisher', '')).lower() or
                 search_lower in str(game.get('platform', '')).lower())
         ]
+
+    # 新增：按日期范围过滤 (确保日期格式兼容比较)
+    if start_date_str:
+        try:
+            # 尝试解析日期，简单起见只比较字符串
+            filtered_data = [game for game in filtered_data if game.get('date') and str(game.get('date')) >= start_date_str]
+        except Exception as e:
+            print(f"处理 start_date 过滤时出错: {e}") # 记录潜在错误
+
+    if end_date_str:
+        try:
+            # 尝试解析日期，简单起见只比较字符串
+            filtered_data = [game for game in filtered_data if game.get('date') and str(game.get('date')) <= end_date_str]
+        except Exception as e:
+            print(f"处理 end_date 过滤时出错: {e}") # 记录潜在错误
 
     # 排序 (可选，例如按日期降序)
     # try:

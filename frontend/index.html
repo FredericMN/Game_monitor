@@ -29,6 +29,32 @@
             </div>
         </div>
 
+        <!-- 新增：今日游戏区域 -->
+        <div class="today-games" id="today-games-section">
+            <h2 class="section-title">今日游戏 <span class="title-date" id="today-date-display"></span></h2>
+            <div class="game-list compact-list" id="today-game-list">
+                <!-- 今日游戏将由 JS 动态填充 -->
+                <p class="loading-message">正在加载今日游戏...</p>
+            </div>
+        </div>
+
+        <!-- 新增：本周游戏区域 -->
+        <div class="weekly-games" id="weekly-games-section">
+            <div class="section-header"> <!-- 用于标题和导航对齐 -->
+                <h2 class="section-title">本周游戏</h2>
+                <!-- 移动周导航到标题之后 -->
+                <div class="week-nav" id="week-navigator">
+                    <button id="prev-week" title="上一周">&lt;</button>
+                    <span id="week-range-display">本周</span>
+                    <button id="next-week" title="下一周">&gt;</button>
+                </div>
+            </div>
+            <div class="game-list weekly-game-list-container" id="weekly-game-list">
+                <!-- 本周游戏将由 JS 动态填充 -->
+                <p class="loading-message">正在加载本周游戏...</p>
+            </div>
+        </div>
+
         <!-- 全部游戏列表区域 -->
         <div class="all-games-table">
             <h2 class="section-title" id="games-table-title">全部游戏列表</h2>

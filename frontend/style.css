@@ -496,4 +496,209 @@ body {
     font-size: 0.7em; /* 调整占位符文字大小 */
     color: #aaa;
     /* margin-right: 8px; */ /* 由 game-name-cell 的 gap 控制间距 */
-} 
+}
+
+/* --- 新增：紧凑型游戏列表 (用于今日/本周) --- */
+.compact-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); /* 更小的最小宽度 */
+    gap: 15px; /* 稍小的间距 */
+}
+
+.game-card.compact-card {
+    padding: 12px 15px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.09); /* 调整阴影 */
+    overflow: hidden;
+    gap: 4px; /* 调整行间距 */
+    background-color: #fff; /* 确保背景色 */
+    border-radius: 6px; /* 统一圆角 */
+    transition: box-shadow 0.2s ease;
+}
+
+.compact-card:hover {
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    /* flex-shrink: 0; */ /* 移除 */
+}
+
+/* --- 卡片行通用样式 --- */
+.compact-card .card-row {
+    width: 100%;
+    display: flex; /* 默认为 flex，方便子元素对齐 */
+    align-items: center; /* 默认垂直居中 */
+    min-width: 0; /* 防止 flex 溢出 */
+}
+
+/* --- 第一行：图标、名称、状态 --- */
+.compact-card .card-header-row {
+    gap: 10px; /* 图标和主内容间距 */
+}
+
+.compact-card .compact-icon,
+.compact-card .placeholder-icon {
+    width: 42px; /* 再次增大图标 */
+    height: 42px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    /* 移除 margin-right，使用 gap 控制 */
+}
+.compact-card .placeholder-icon {
+     background-color: #f0f0f0;
+     font-size: 0.7em;
+     color: #bbb;
+     display: flex; /* 用于居中文字 */
+     justify-content: center;
+}
+
+.compact-card .header-main {
+    flex-grow: 1;
+    display: flex;
+    justify-content: space-between; /* 名称居左，状态居右 */
+    align-items: center;
+    min-width: 0; /* 防止溢出 */
+    gap: 8px; /* 名称和状态间距 */
+}
+
+.compact-card .compact-name {
+    margin: 0;
+    font-size: 1.05em; /* 略微增大名称 */
+    font-weight: 600; /* 加粗 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #222;
+    /* flex-grow: 1; */ /* 移除，让状态标签确定宽度 */
+}
+
+.compact-card .compact-name a {
+    color: inherit; /* 继承父级颜色 */
+    text-decoration: none;
+}
+.compact-card .compact-name a:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+.compact-card .card-header-row .status-tag {
+    flex-shrink: 0; /* 状态不压缩 */
+    font-size: 0.7em;
+    padding: 3px 7px;
+}
+
+/* --- 第二/三行：详情 (厂商/分类) --- */
+.compact-card .card-details-row {
+    padding-left: 52px; /* 左侧缩进 = 图标宽度(42) + gap(10) */
+    box-sizing: border-box;
+}
+
+.compact-card p.compact-details {
+    margin: 0;
+    font-size: 0.8em;
+    color: #666; /* 调整颜色 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4; /* 调整行高 */
+    width: 100%; /* 确保占满 */
+}
+
+.compact-card .detail-label {
+    font-weight: 500; /* 标签稍加粗 */
+    color: #444;
+    margin-right: 4px;
+}
+
+/* 移除旧的状态行样式 */
+/* .compact-card .card-row.card-status-row { ... } */
+/* .compact-card .status-tag { ... } */
+
+
+/* --- 今日游戏标题日期样式 --- */
+.section-title .title-date {
+    font-size: 0.7em; /* 更小字体 */
+    color: #888; /* 灰色 */
+    font-weight: normal; /* 正常字重 */
+    margin-left: 8px;
+}
+
+/* --- 新增：本周游戏按日期分组的样式 --- */
+/* 确保 section-header 使用 flex 布局 */
+.weekly-games .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /* margin-bottom: 15px; */ /* 移除，用下面的 padding 和 border 控制间距 */
+    /* 新增：将下划线应用到 header 容器 */
+    padding-bottom: 10px; /* 下划线上方留白 */
+    border-bottom: 2px solid #e0e0e0; /* 横贯下划线 */
+    margin-bottom: 20px; /* 调整下划线与下方列表的间距，与其他 section 标题保持一致 */
+}
+
+/* 重置 section-header 内标题的样式 */
+.weekly-games .section-header .section-title {
+    margin-top: 0;
+    margin-bottom: 0;
+    /* 再次确认移除标题自身的 padding 和 border */
+    padding-bottom: 0 !important; /* 使用 !important 提高优先级 */
+    border-bottom: none !important; /* 使用 !important 提高优先级 */
+}
+
+.weekly-game-list-container {
+    /* 移除 grid 布局，改为默认块级布局 */
+    display: block;
+}
+
+.weekly-date-section {
+    margin-bottom: 25px; /* 日期组之间的间距 */
+}
+
+.weekly-date-title {
+    margin: 0 0 10px 0;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #555;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #eee; /* 日期下方细线 */
+}
+
+/* 本周游戏每日列表使用 grid */
+.daily-game-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+/* 可以为本周游戏卡片添加特定微调，如果需要 */
+/* .weekly-item-card { ... } */
+
+/* --- 模块间距 --- */
+.today-games,
+.weekly-games,
+.all-games-table {
+    margin-top: 40px; /* 统一模块上边距 */
+}
+
+/* 如果 .section-title 样式被覆盖，需要重新声明 */
+.section-title {
+    color: #2c3e50;
+    margin-top: 40px; /* 默认上边距，会被上面的规则覆盖 */
+    margin-bottom: 20px; /* 恢复默认下边距 */
+    padding-bottom: 10px; /* 恢复下边距 */
+    border-bottom: 2px solid #e0e0e0; /* 恢复下划线 */
+    text-align: left;
+}
+
+/* 恢复本周游戏标题的下划线和默认底部间距 */
+/* 将通用标题样式应用回本周游戏标题 */
+.weekly-games .section-header .section-title {
+    /* 继承 .section-title 的默认样式 */
+    /* 需要确保 .section-title 包含下划线样式 */
+    /* 移除之前的重置 */
+    margin-top: 0; /* 在 header 内不需要上边距 */
+    margin-bottom: 0; /* 在 header 内不需要下边距 */
+    /* 显式添加下划线和内边距 */
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0e0e0;
+}

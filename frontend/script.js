@@ -14,6 +14,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const topGamesSection = document.getElementById('top-games-section');
     const gamesTableTitle = document.getElementById('games-table-title');
 
+    // 新增：获取今日和本周游戏相关元素
+    const todayGameList = document.getElementById('today-game-list');
+    const weeklyGameList = document.getElementById('weekly-game-list');
+    const weekNavigator = document.getElementById('week-navigator');
+    const prevWeekButton = document.getElementById('prev-week');
+    const nextWeekButton = document.getElementById('next-week');
+    const weekRangeDisplay = document.getElementById('week-range-display');
+
     const API_BASE_URL = 'http://localhost:5000/api'; // 后端 API 地址
 
     let currentPage = 1;
@@ -77,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
                 iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="featured-icon" loading="lazy">`;
             } else {
-                iconHtml = '<div class="featured-icon placeholder-icon">无图</div>';
+                iconHtml = '<div class="featured-icon placeholder-icon">无</div>';
             }
 
             // 构建里程碑 HTML
@@ -153,24 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
             allGamesTbody.appendChild(row);
         });
 
-        // 更新分页
         updatePaginationControls(data.pagination.total_items, data.pagination.total_pages, data.pagination.current_page);
-    }
-
-    function updatePaginationControls(totalItems, totalPgs, currentPg) {
-        totalPages = totalPgs;
-        currentPage = currentPg;
-
-        if (totalItems === 0) {
-            pageInfo.textContent = '无数据';
-            prevPageButton.disabled = true;
-            nextPageButton.disabled = true;
-        } else {
-            pageInfo.textContent = `页码 ${currentPage} / ${totalPages}`;
-            prevPageButton.disabled = currentPage <= 1;
-            nextPageButton.disabled = currentPage >= totalPages;
-        }
-        paginationControls.style.display = totalItems > 0 ? 'flex' : 'none'; // 无数据时隐藏分页
     }
 
     // --- 辅助函数 ---
@@ -195,6 +186,36 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lowerStatus.includes('更新')) return 'status-update';
 
         return 'status-unknown'; // 其他或未知
+    }
+
+    // --- 新增：日期处理辅助函数 ---
+    function formatDate(date) {
+        // 将 Date 对象格式化为 YYYY-MM-DD
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function getWeekRange(dateOffset = 0) {
+        // dateOffset: 0 表示本周, -1 表示上周, 1 表示下周, 以此类推
+        const today = new Date();
+        today.setDate(today.getDate() + dateOffset * 7);
+
+        const dayOfWeek = today.getDay(); // 0 = 周日, 1 = 周一, ..., 6 = 周六
+
+        // 计算周一 (如果今天是周日 dayOfWeek 为 0，则减去 6 天；否则减去 dayOfWeek - 1 天)
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+        // 计算周日
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+
+        return {
+            start: formatDate(monday),
+            end: formatDate(sunday)
+        };
     }
 
     function truncateText(text, maxLength) {
@@ -377,7 +398,205 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFeaturedGames(featuredGames); // 直接渲染从 API 获取的数据
     }
 
-    // --- 事件监听器设置 (简化导航切换) ---
+    // --- 新增：加载今日游戏数据 ---
+    async function loadTodayGames() {
+        todayGameList.innerHTML = '<p class="loading-message">正在加载今日游戏...</p>';
+        const todayDate = formatDate(new Date());
+        // 新增：设置今日日期显示
+        const todayDateDisplay = document.getElementById('today-date-display');
+        if(todayDateDisplay) {
+            todayDateDisplay.textContent = `(${todayDate})`;
+        }
+
+        const params = {
+            start_date: todayDate,
+            end_date: todayDate,
+            // per_page: 12 // 移除前端的 per_page 限制，让后端决定
+        };
+        const data = await fetchData('/games', params);
+        if (data && data.games) {
+            // 修改：调用 renderWeeklyGames 来渲染，但只传入游戏列表和目标元素
+            // renderWeeklyGames 会自动处理无数据情况，但没有按日期分组的标题
+            renderWeeklyGames(data.games, todayGameList, false); // 添加第三个参数 false 表示不分组
+        } else {
+            // renderWeeklyGames 内部会处理空列表
+             renderWeeklyGames([], todayGameList, false);
+            // renderSimpleGameList([], todayGameList); // 显示"暂无游戏"
+        }
+    }
+
+    // --- 新增：加载本周游戏数据 ---
+    let currentWeekOffset = 0; // 0 表示本周
+
+    async function loadWeeklyGames() {
+        weeklyGameList.innerHTML = '<p class="loading-message">正在加载本周游戏...</p>';
+        const weekRange = getWeekRange(currentWeekOffset);
+
+        // 修改：始终显示日期范围
+        weekRangeDisplay.textContent = `${weekRange.start} ~ ${weekRange.end}`;
+        /*
+        // 更新周导航显示
+        if (currentWeekOffset === 0) {
+            weekRangeDisplay.textContent = "本周";
+        } else if (currentWeekOffset === -1) {
+            weekRangeDisplay.textContent = "上周";
+        } else if (currentWeekOffset === 1) {
+            weekRangeDisplay.textContent = "下周";
+        } else {
+            weekRangeDisplay.textContent = `${weekRange.start} ~ ${weekRange.end}`;
+        }
+        */
+        // 更新按钮状态（可选，例如限制不能查看太远的未来）
+        // nextWeekButton.disabled = currentWeekOffset >= 2; // 示例：最多查看未来两周
+        // prevWeekButton.disabled = currentWeekOffset <= -8; // 示例：最多查看过去八周
+
+        const params = {
+            start_date: weekRange.start,
+            end_date: weekRange.end,
+            // per_page: 12 // 移除前端的 per_page 限制，让后端决定
+        };
+        const data = await fetchData('/games', params);
+        if (data && data.games) {
+            renderWeeklyGames(data.games, weeklyGameList);
+        } else {
+            renderSimpleGameList([], weeklyGameList);
+        }
+    }
+
+    // --- 新增：渲染本周游戏列表（按日期分组） ---
+    function renderWeeklyGames(games, targetElement, isGrouped = true) {
+        targetElement.innerHTML = ''; // 清空
+        if (!games || games.length === 0) {
+            const message = isGrouped ? "本周暂无游戏动态。" : "今日暂无游戏动态。"; // 根据模式显示不同提示
+            targetElement.innerHTML = `<p class="loading-message">${message}</p>`;
+            return;
+        }
+
+        if (isGrouped) {
+            // --- 按日期分组渲染 --- (原有逻辑)
+            // 1. 按日期分组
+            const gamesByDate = games.reduce((acc, game) => {
+                const date = game.date || '未知日期';
+                if (!acc[date]) {
+                    acc[date] = [];
+                }
+                acc[date].push(game);
+                return acc;
+            }, {});
+
+            // 2. 获取排序后的日期键
+            const sortedDates = Object.keys(gamesByDate).sort((a, b) => {
+                 // 确保未知日期排在最后
+                 if (a === '未知日期') return 1;
+                 if (b === '未知日期') return -1;
+                 // 按日期字符串排序
+                 return a.localeCompare(b);
+            });
+
+            // 3. 为每个日期渲染一个部分
+            sortedDates.forEach(date => {
+                const dailyGames = gamesByDate[date];
+                const dateSection = document.createElement('div');
+                dateSection.className = 'weekly-date-section';
+
+                const dateTitle = document.createElement('h4');
+                dateTitle.className = 'weekly-date-title';
+                // dateTitle.textContent = date; // 移动到下方
+                // 新增：添加星期几
+                if (date !== '未知日期') {
+                    dateTitle.textContent = date; // 先设置日期
+                    try {
+                        const dateObj = new Date(date + 'T00:00:00'); // 避免时区问题
+                        const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
+                        dateTitle.textContent += ` ${dayOfWeek}`;
+                    } catch (e) {
+                        console.error("无法解析日期以获取星期几:", date, e);
+                    }
+                } else {
+                    dateTitle.textContent = '未知日期';
+                }
+                dateSection.appendChild(dateTitle);
+
+                const dailyList = document.createElement('div');
+                dailyList.className = 'daily-game-list'; // 新 class 用于样式
+                dailyGames.forEach(game => {
+                    // --- 卡片创建逻辑 (保持不变) ---
+                    const card = document.createElement('div');
+                    card.className = 'game-card compact-card weekly-item-card'; // 可以加个特定 class
+
+                    let iconHtml = '';
+                    if (game.icon_url && String(game.icon_url).trim() !== '') {
+                        const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
+                        iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="compact-icon" loading="lazy">`;
+                    } else {
+                        iconHtml = '<div class="compact-icon placeholder-icon">无</div>';
+                    }
+
+                    const nameTextHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
+                    const statusTagHtml = `<span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span>`;
+
+                    // 修改卡片结构 V3
+                    card.innerHTML = `
+                        <div class="card-row card-header-row">
+                            ${iconHtml}
+                            <div class="header-main">
+                                <h4 class="compact-name" title="${game.name || '未知名称'}">${nameTextHtml}</h4>
+                                ${statusTagHtml}  </div>
+                        </div>
+                        <div class="card-row card-details-row publisher-row">
+                            <p class="compact-details publisher" title="${game.publisher || '未知厂商'}"><span class="detail-label">厂商:</span> ${game.publisher || '-'}</p>
+                        </div>
+                        <div class="card-row card-details-row category-row">
+                            <p class="compact-details category" title="${game.category || '无分类'}"><span class="detail-label">分类:</span> ${game.category || '-'}</p>
+                        </div>
+                    `;
+                    dailyList.appendChild(card);
+                    // --- 卡片创建逻辑结束 ---
+                });
+                dateSection.appendChild(dailyList);
+                targetElement.appendChild(dateSection);
+            });
+        } else {
+             // --- 不分组直接渲染卡片 (用于今日游戏) ---
+            targetElement.className = 'game-list daily-game-list'; // 确保目标元素有 grid 样式
+            games.forEach(game => {
+                 // --- 卡片创建逻辑 (与上方分组渲染中的逻辑完全一致) ---
+                 const card = document.createElement('div');
+                 card.className = 'game-card compact-card today-item-card'; // 可以给今日卡片一个特定 class
+
+                 let iconHtml = '';
+                 if (game.icon_url && String(game.icon_url).trim() !== '') {
+                     const proxyImageUrl = `${API_BASE_URL}/image?url=${encodeURIComponent(game.icon_url)}`;
+                     iconHtml = `<img src="${proxyImageUrl}" alt="${game.name || '图标'}" class="compact-icon" loading="lazy">`;
+                 } else {
+                     iconHtml = '<div class="compact-icon placeholder-icon">无</div>';
+                 }
+
+                 const nameTextHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
+                 const statusTagHtml = `<span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span>`;
+
+                 // 修改卡片结构 V3
+                 card.innerHTML = `
+                     <div class="card-row card-header-row">
+                         ${iconHtml}
+                         <div class="header-main">
+                             <h4 class="compact-name" title="${game.name || '未知名称'}">${nameTextHtml}</h4>
+                             ${statusTagHtml}  </div>
+                     </div>
+                     <div class="card-row card-details-row publisher-row">
+                         <p class="compact-details publisher" title="${game.publisher || '未知厂商'}"><span class="detail-label">厂商:</span> ${game.publisher || '-'}</p>
+                     </div>
+                     <div class="card-row card-details-row category-row">
+                         <p class="compact-details category" title="${game.category || '无分类'}"><span class="detail-label">分类:</span> ${game.category || '-'}</p>
+                     </div>
+                 `;
+                 targetElement.appendChild(card); // 直接添加卡片
+                 // --- 卡片创建逻辑结束 ---
+            });
+        }
+    }
+
+    // --- 事件监听器设置 (修改) ---
     function setupEventListeners() {
         // 筛选按钮点击 (保持不变)
         filterButton.addEventListener('click', () => {
@@ -408,20 +627,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 导航切换 (简化，因为只有一个页签了)
-        // 可以完全移除，或者保留以备将来扩展
-        /*
-        document.querySelectorAll('.navbar a').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                // const section = e.target.getAttribute('data-section');
-                // updateUIForSection('all'); // 始终回到 all
-            });
+        // --- 新增：周导航按钮事件监听 ---
+        prevWeekButton.addEventListener('click', () => {
+            currentWeekOffset--;
+            loadWeeklyGames();
         });
-        */
+
+        nextWeekButton.addEventListener('click', () => {
+            currentWeekOffset++;
+            loadWeeklyGames();
+        });
     }
 
-    // --- 初始化和启动 (简化) ---
+    // --- 初始化和启动 (修改) ---
     async function initialLoad() {
         // 直接设置初始状态为 all，无需调用 updateUIForSection
         const activeLink = document.querySelector(`.navbar a[data-section="all"]`);
@@ -433,6 +651,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setupEventListeners();        // 设置所有事件监听器
         loadFeaturedGames();          // 加载首页的重点游戏卡片 (仍然保留)
+        loadTodayGames();             // 新增：加载今日游戏
+        loadWeeklyGames();            // 新增：加载本周游戏
         await fetchAllGamesForFilters(); // 获取所有游戏数据并填充所有过滤器
         loadAllGames();                // 初始加载全部游戏列表
     }
