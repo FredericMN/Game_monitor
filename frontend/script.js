@@ -497,10 +497,35 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // --- 新增：排序函数 ---
+        function getSortPriority(status) {
+            if (!status) return 6; // 优先级 6: 未知/无状态
+            const lowerStatus = String(status).toLowerCase();
+            const normalizedStatus = String(status); // 保留原始大小写用于精确匹配
+
+            if (lowerStatus.includes('上线') || lowerStatus.includes('公测')) return 1; // 优先级 1: 上线/公测
+            if (lowerStatus.includes('测试') && !normalizedStatus.includes('招募')) return 2; // 优先级 2: 纯测试
+            if (normalizedStatus.includes('招募')) return 3; // 优先级 3: 招募类
+            if (lowerStatus.includes('预约') || lowerStatus.includes('预订')) return 4; // 优先级 4: 预约/预订
+            return 5; // 优先级 5: 其他所有状态
+        }
+
+        // --- 新增：排序逻辑（通用） ---
+        const sortedGames = games.sort((a, b) => {
+            const priorityA = getSortPriority(a.status);
+            const priorityB = getSortPriority(b.status);
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB; // 按优先级排序
+            }
+            // 优先级相同，可以保持原有顺序或添加次要排序规则（例如按名称）
+            // return a.name.localeCompare(b.name); // 可选：按名称排序
+            return 0; // 保持原有相对顺序
+        });
+
         if (isGrouped) {
             // --- 按日期分组渲染 --- (原有逻辑)
-            // 1. 按日期分组
-            const gamesByDate = games.reduce((acc, game) => {
+            // 1. 按日期分组 (使用已排序的 sortedGames)
+            const gamesByDate = sortedGames.reduce((acc, game) => { // 使用 sortedGames
                 const date = game.date || '未知日期';
                 if (!acc[date]) {
                     acc[date] = [];
@@ -509,7 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return acc;
             }, {});
 
-            // 2. 获取排序后的日期键
+            // 2. 获取排序后的日期键 (保持不变)
             const sortedDates = Object.keys(gamesByDate).sort((a, b) => {
                  // 确保未知日期排在最后
                  if (a === '未知日期') return 1;
@@ -520,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 3. 为每个日期渲染一个部分
             sortedDates.forEach(date => {
-                const dailyGames = gamesByDate[date];
+                const dailyGames = gamesByDate[date]; // dailyGames 现在内部已经按状态排好序了
                 const dateSection = document.createElement('div');
                 dateSection.className = 'weekly-date-section';
 
@@ -543,11 +568,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 dateSection.appendChild(dateTitle);
 
                 const dailyList = document.createElement('div');
-                dailyList.className = 'daily-game-list'; // 新 class 用于样式
-                dailyGames.forEach(game => {
+                dailyList.className = 'daily-game-list';
+                // --- 修改：遍历 dailyGames (已经是按状态排序好的) 来创建卡片 ---
+                dailyGames.forEach(game => { // dailyGames 已经是排序好的
                     // --- 卡片创建逻辑 (保持不变) ---
                     const card = document.createElement('div');
-                    card.className = 'game-card compact-card weekly-item-card'; // 可以加个特定 class
+                    card.className = 'game-card compact-card weekly-item-card';
 
                     let iconHtml = '';
                     if (game.icon_url && String(game.icon_url).trim() !== '') {
@@ -560,7 +586,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const nameTextHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
                     const statusTagHtml = `<span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span>`;
 
-                    // 修改卡片结构 V3
                     card.innerHTML = `
                         <div class="card-row card-header-row">
                             ${iconHtml}
@@ -584,10 +609,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
              // --- 不分组直接渲染卡片 (用于今日游戏) ---
             targetElement.className = 'game-list daily-game-list'; // 确保目标元素有 grid 样式
-            games.forEach(game => {
+             // --- 修改：遍历 sortedGames (已排序好的) 来创建卡片 ---
+            sortedGames.forEach(game => { // 直接使用排序后的 sortedGames
                  // --- 卡片创建逻辑 (与上方分组渲染中的逻辑完全一致) ---
                  const card = document.createElement('div');
-                 card.className = 'game-card compact-card today-item-card'; // 可以给今日卡片一个特定 class
+                 card.className = 'game-card compact-card today-item-card';
 
                  let iconHtml = '';
                  if (game.icon_url && String(game.icon_url).trim() !== '') {
@@ -600,7 +626,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  const nameTextHtml = game.link ? `<a href="${game.link}" target="_blank">${game.name || '未知名称'}</a>` : (game.name || '未知名称');
                  const statusTagHtml = `<span class="status-tag ${getStatusClass(game.status)}">${game.status || '未知状态'}</span>`;
 
-                 // 修改卡片结构 V3
                  card.innerHTML = `
                      <div class="card-row card-header-row">
                          ${iconHtml}
