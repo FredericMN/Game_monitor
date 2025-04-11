@@ -874,15 +874,6 @@ body {
     /* No transition delay needed here as it should be instantly visible if active */
 }
 
-/* Make the active link itself trigger the nav expansion appearance slightly if not hovered */
-.side-nav:not(:hover) ul li a.active {
-     /* Keep the blue background, but maybe slightly less prominent? Optional. */
-     /* background-color: rgba(0, 122, 255, 0.9); */ /* Example */
-     /* Add a subtle border instead of shadow when not hovered? Optional */
-     /* border: 1px solid rgba(0, 122, 255, 0.3); */
-     /* box-shadow: none; */
-}
-
 /* Responsive adjustments */
 @media (max-width: 992px) {
     .side-nav {
