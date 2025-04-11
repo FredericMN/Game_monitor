@@ -11,6 +11,7 @@ import pandas as pd
 import logging
 import glob # Needed for checking excel file
 import unicodedata # 添加 unicodedata 用于规范化
+import shutil # Added for backup before analysis
 
 # --- 配置日志 ---
 log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
@@ -71,6 +72,13 @@ except ImportError as e:
      logging.error(f"导入 p16_selenium 失败: {e} - 请确保文件已重命名为 p16_selenium.py")
 try: from version_matcher import match_version_numbers_for_games; match_versions_func = match_version_numbers_for_games; logging.info("成功导入 version_matcher 模块。")
 except ImportError as e: logging.error(f"导入 version_matcher 失败: {e}")
+# --- Add import for the analysis script --- 
+try:
+    from analyze_game_updates import analyze_and_remove_old_tests
+    logging.info("成功导入 analyze_game_updates 模块。")
+except ImportError as e:
+    analyze_and_remove_old_tests = None # Set to None if import fails
+    logging.warning(f"导入 analyze_game_updates 失败，无法执行测试间隔清理: {e}")
 
 
 # --- 辅助函数 ---
@@ -871,10 +879,55 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
         # Save results if successful
         if execution_successful and final_games_list:
             _save_results(final_games_list, master_json_file, master_excel_file, excel_columns_map)
+
+            # 8. Backup and Run analysis/cleanup on the saved Excel file
+            if analyze_and_remove_old_tests: # Check if function was imported successfully
+                logging.info("--- 开始执行测试日期间隔分析和清理 --- ")
+                
+                # --- Backup before analysis --- 
+                backup_file = os.path.join(data_dir, f"all_games_data.xlsx.bak") 
+                try:
+                    if os.path.exists(master_excel_file):
+                        shutil.copy2(master_excel_file, backup_file)
+                        logging.info(f"已创建/覆盖分析前备份文件: {backup_file}")
+                    else:
+                         logging.warning(f"无法创建备份，因为主文件 {master_excel_file} 不存在。")
+                except Exception as e:
+                    logging.error(f"创建分析前备份文件失败: {e}。请注意！")
+
+                # --- Get parameters for analysis --- 
+                status_config = CONFIG.get('status_standardization', {})
+                # Determine the standardized name for 'test' status
+                status_test_name = '测试' # Default
+                test_keys_to_check = ['status_test', '测试', 'Test'] # Keys to check in config
+                for key in test_keys_to_check:
+                    if key in status_config:
+                         status_test_name = status_config[key]
+                         break
+                logging.info(f"将使用状态名 '{status_test_name}' 进行测试间隔分析。")
+                
+                # Get min_days from config, default to 7 if not found
+                min_days = CONFIG.get('analysis_min_interval_days', 7)
+                logging.info(f"将使用最小间隔天数: {min_days} 进行分析。")
+                
+                # --- Run the analysis function --- 
+                try:
+                     analysis_modified = analyze_and_remove_old_tests(
+                         master_excel_file,
+                         status_test_name,
+                         min_days
+                     )
+                     if analysis_modified:
+                          logging.info("测试日期间隔分析完成，旧记录已根据规则删除。")
+                     else:
+                          logging.info("测试日期间隔分析完成，未进行修改（未发现需删除的记录或操作失败）。")
+                except Exception as analysis_error:
+                     logging.error(f"执行测试日期间隔分析时发生错误: {analysis_error}", exc_info=True)
+                     logging.error("Excel 文件可能未被清理，请检查。")
         elif execution_successful and not final_games_list:
-             logging.warning("处理流程成功但最终列表为空，不执行保存操作。")
+             logging.warning("处理流程成功但最终列表为空，不执行保存和分析操作。")
         elif not execution_successful:
-             logging.info("处理流程未成功完成，跳过保存操作。")
+             logging.info("处理流程未成功完成，跳过保存和分析操作。")
 
         logging.info(f"任务结束，总耗时: {time.time() - start_time:.2f} 秒。")
         logging.info("="*50 + "\n")
