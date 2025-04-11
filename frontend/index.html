@@ -9,6 +9,7 @@
 </head>
 <body>
 
+    <!-- 顶部导航栏 -->
     <nav class="navbar">
         <div class="logo">LCM游戏动态监控</div>
         <ul>
@@ -19,6 +20,33 @@
         </ul>
     </nav>
 
+    <!-- Revised Side Navigation -->
+    <nav class="side-nav" id="side-nav">
+        <ul>
+            <li>
+                <a href="#top-games-section" class="side-nav-link" title="重点关注">
+                    <span class="icon">⭐</span> <span class="text">重点关注</span>
+                </a>
+            </li>
+            <li>
+                <a href="#today-games-section" class="side-nav-link" title="今日游戏">
+                    <span class="icon">📅</span> <span class="text">今日游戏</span>
+                </a>
+            </li>
+            <li>
+                <a href="#weekly-games-section" class="side-nav-link" title="本周游戏">
+                    <span class="icon">🗓️</span> <span class="text">本周游戏</span>
+                </a>
+            </li>
+            <li>
+                <a href="#all-games-section" class="side-nav-link" title="全部列表">
+                    <span class="icon">📄</span> <span class="text">全部列表</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- 主内容容器 -->
     <div class="container">
         <!-- 重点关注区域 -->
         <div class="top-games" id="top-games-section">
@@ -55,50 +83,52 @@
             </div>
         </div>
 
-        <!-- 全部游戏列表区域 -->
-        <div class="all-games-table">
-            <h2 class="section-title" id="games-table-title">全部游戏列表</h2>
-             <!-- 搜索和过滤栏 -->
-            <div class="filter-bar">
-                <input type="text" id="search-input" placeholder="搜索游戏名称...">
-                <select id="status-filter">
-                    <option value="">所有状态</option>
-                    <!-- 状态选项将由 JS 动态填充 -->
-                </select>
-                <select id="source-filter">
-                    <option value="">所有来源</option>
-                    <!-- 来源选项将由 JS 动态填充 -->
-                </select>
-                <!-- 新增厂商筛选 -->
-                <select id="publisher-filter">
-                    <option value="">所有厂商</option>
-                    <option value="TWM">腾网米</option> <!-- 特殊选项 -->
-                    <!-- 其他厂商选项将由 JS 动态填充 -->
-                </select>
-                <button id="filter-button">筛选</button>
-            </div>
-            <table class="styled-table">
-                <thead>
-                    <tr>
-                        <th>日期</th>
-                        <!-- <th>图标</th> -->
-                        <th>游戏名称 / 状态</th>
-                        <th>分类</th>
-                        <th>厂商</th>
-                        <th class="description-column">简介</th>
-                        <!-- <th id="featured-column-head" style="display: none;">重点关注</th> -->
-                    </tr>
-                </thead>
-                <tbody id="all-games-tbody">
-                    <!-- 表格内容将由 JS 动态填充 -->
-                    <tr><td colspan="5" class="loading-message">正在加载游戏列表...</td></tr>
-                </tbody>
-            </table>
-            <!-- 分页控件 -->
-            <div class="pagination" id="pagination-controls">
-                <button id="prev-page" disabled>&lt; 上一页</button>
-                <span id="page-info">页码 1 / 1</span>
-                <button id="next-page" disabled>下一页 &gt;</button>
+        <!-- 全部游戏列表区域 - 添加外层包裹 div 和 ID -->
+        <div id="all-games-section">
+            <div class="all-games-table">
+                <h2 class="section-title" id="games-table-title">全部游戏列表</h2>
+                 <!-- 搜索和过滤栏 -->
+                <div class="filter-bar">
+                    <input type="text" id="search-input" placeholder="搜索游戏名称...">
+                    <select id="status-filter">
+                        <option value="">所有状态</option>
+                        <!-- 状态选项将由 JS 动态填充 -->
+                    </select>
+                    <select id="source-filter">
+                        <option value="">所有来源</option>
+                        <!-- 来源选项将由 JS 动态填充 -->
+                    </select>
+                    <!-- 新增厂商筛选 -->
+                    <select id="publisher-filter">
+                        <option value="">所有厂商</option>
+                        <option value="TWM">腾网米</option> <!-- 特殊选项 -->
+                        <!-- 其他厂商选项将由 JS 动态填充 -->
+                    </select>
+                    <button id="filter-button">筛选</button>
+                </div>
+                <table class="styled-table">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <!-- <th>图标</th> -->
+                            <th>游戏名称 / 状态</th>
+                            <th>分类</th>
+                            <th>厂商</th>
+                            <th class="description-column">简介</th>
+                            <!-- <th id="featured-column-head" style="display: none;">重点关注</th> -->
+                        </tr>
+                    </thead>
+                    <tbody id="all-games-tbody">
+                        <!-- 表格内容将由 JS 动态填充 -->
+                        <tr><td colspan="5" class="loading-message">正在加载游戏列表...</td></tr>
+                    </tbody>
+                </table>
+                <!-- 分页控件 -->
+                <div class="pagination" id="pagination-controls">
+                    <button id="prev-page" disabled>&lt; 上一页</button>
+                    <span id="page-info">页码 1 / 1</span>
+                    <button id="next-page" disabled>下一页 &gt;</button>
+                </div>
             </div>
         </div>
 

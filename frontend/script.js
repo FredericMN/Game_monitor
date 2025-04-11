@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let allGamesData = []; // 变量用于存储从后端获取的所有游戏数据 (用于填充过滤器)
 
+    const sideNavLinks = document.querySelectorAll('.side-nav-link');
+    const sections = document.querySelectorAll('[id$="-section"]'); // 获取所有以 "-section" 结尾的 ID 元素
+
     // --- 数据获取函数 ---
     async function fetchData(endpoint, params = {}) {
         const url = new URL(`${API_BASE_URL}${endpoint}`);
@@ -661,6 +664,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- 添加平滑滚动功能 ---
+    function setupSideNavScrolling() {
+        sideNavLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault(); // 阻止默认的锚点跳转行为
+                const targetId = this.getAttribute('href').substring(1); // 获取目标 ID (#top-games-section -> top-games-section)
+                const targetElement = document.getElementById(targetId);
+
+                if (targetElement) {
+                    // 计算目标位置，考虑顶部固定导航栏的高度
+                    const navbarHeight = document.querySelector('.navbar')?.offsetHeight || 0;
+                    const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - navbarHeight - 10; // 减去导航栏高度并留一点间距
+
+                    window.scrollTo({
+                        top: targetPosition,
+                        behavior: 'smooth' // 平滑滚动
+                    });
+                }
+            });
+        });
+    }
+
+    // --- 添加滚动监听以高亮导航项 (使用 Intersection Observer) ---
+    function setupScrollSpy() {
+        const observerOptions = {
+            root: null, // 相对于视口
+            rootMargin: '-60px 0px -50% 0px', // 顶部偏移（避开导航栏），底部偏移（触发点在元素上半部分）
+            threshold: 0 // 元素一进入或离开就触发
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const targetId = entry.target.id;
+                const correspondingLink = document.querySelector(`.side-nav-link[href="#${targetId}"]`);
+
+                if (correspondingLink) {
+                    if (entry.isIntersecting) {
+                        // 进入视口，先移除所有 active 类，再添加给当前链接
+                        sideNavLinks.forEach(link => link.classList.remove('active'));
+                        correspondingLink.classList.add('active');
+                    }
+                    // 可选：如果希望元素完全离开视口时取消高亮（但可能会导致没有链接高亮）
+                     else {
+                        // correspondingLink.classList.remove('active');
+                    }
+                }
+            });
+        }, observerOptions);
+
+        // 观察所有目标区域
+        sections.forEach(section => {
+            if (section) { // 确保 section 存在
+                observer.observe(section);
+            }
+        });
+    }
+
     // --- 初始化和启动 (修改) ---
     async function initialLoad() {
         // 直接设置初始状态为 all，无需调用 updateUIForSection
@@ -672,9 +732,12 @@ document.addEventListener('DOMContentLoaded', () => {
         gamesTableTitle.textContent = '全部游戏列表';
 
         setupEventListeners();        // 设置所有事件监听器
-        loadFeaturedGames();          // 加载首页的重点游戏卡片 (仍然保留)
-        loadTodayGames();             // 新增：加载今日游戏
-        loadWeeklyGames();            // 新增：加载本周游戏
+        setupSideNavScrolling();      // 新增：设置侧边导航滚动
+        setupScrollSpy();             // 新增：设置滚动监听高亮
+
+        loadFeaturedGames();          // 加载首页的重点游戏卡片
+        loadTodayGames();             // 加载今日游戏
+        loadWeeklyGames();            // 加载本周游戏
         await fetchAllGamesForFilters(); // 获取所有游戏数据并填充所有过滤器
         loadAllGames();                // 初始加载全部游戏列表
     }

@@ -757,3 +757,135 @@ body {
     min-width: 100px; /* 最小宽度，防止文字跳动 */
     text-align: center; /* 文字居中 */
 }
+
+/* --- 新增：左侧浮动导航栏样式 --- */
+.side-nav {
+    position: fixed;
+    left: 10px; /* Indent from the left edge */
+    top: 50%; /* Start vertically centered */
+    transform: translateY(-50%); /* Precise vertical centering */
+    width: 55px; /* Initial width for icons only */
+    background: none; /* No background by default */
+    border: none; /* No border by default */
+    padding: 8px 0; /* Reduced vertical padding */
+    z-index: 100; /* Ensure it's on top */
+    transition: width 0.3s ease, background-color 0.3s ease, backdrop-filter 0.3s ease, box-shadow 0.3s ease; /* Animate multiple properties */
+    overflow: hidden; /* Hide text initially */
+    border-radius: 28px; /* Rounded corners for the container when background appears */
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center items horizontally */
+}
+
+/* Background and expansion appear on hover over the nav area */
+.side-nav:hover {
+    width: 170px; /* Expand width to accommodate text */
+    background-color: rgba(248, 248, 250, 0.9); /* Light, slightly transparent background */
+    backdrop-filter: blur(12px); /* More noticeable blur */
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); /* Soft shadow */
+}
+
+.side-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+}
+
+.side-nav ul li {
+    margin-bottom: 8px; /* Spacing between items */
+    width: 100%;
+    padding: 0 5px; /* Add padding inside li for link spacing */
+    box-sizing: border-box;
+}
+.side-nav ul li:last-child {
+     margin-bottom: 0;
+}
+
+.side-nav ul li a {
+    display: flex;
+    align-items: center;
+    height: 44px; /* Slightly taller links */
+    padding: 0 12px; /* Horizontal padding within the link */
+    color: #333; /* Default text/icon color */
+    text-decoration: none;
+    font-size: 0.9em;
+    font-weight: 500;
+    border-radius: 10px; /* Slightly rounded corners for links */
+    transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.side-nav ul li a .icon {
+    font-size: 1.3em; /* Slightly larger icon */
+    min-width: 30px; /* Ensure consistent space for icon */
+    text-align: center;
+    margin-right: 12px; /* Space between icon and text */
+    transition: margin 0.3s ease;
+    color: #1d1d1f; /* Darker icon color (Apple-like) */
+    flex-shrink: 0; /* Prevent icon shrinking */
+}
+
+.side-nav ul li a .text {
+    opacity: 0; /* Hide text by default */
+    visibility: hidden;
+    transition: opacity 0.2s ease 0.1s, visibility 0s ease 0.3s;
+    transform: translateX(-5px);
+    font-weight: 500; /* Medium weight text */
+}
+
+/* Reveal text when nav is hovered */
+.side-nav:hover ul li a .text {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    transition: opacity 0.3s ease 0.1s, visibility 0s ease 0s, transform 0.3s ease 0.1s;
+}
+
+/* Hover state for individual links (only when nav is expanded) */
+.side-nav:hover ul li a:not(.active):hover {
+    background-color: rgba(0, 0, 0, 0.05); /* Subtle hover background */
+    color: #000;
+}
+.side-nav:hover ul li a:not(.active):hover .icon {
+    color: #000;
+}
+
+/* Active state for individual links */
+.side-nav ul li a.active {
+    background-color: #007aff; /* Apple blue */
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 3px 8px rgba(0, 122, 255, 0.25); /* Subtle blue shadow */
+}
+.side-nav ul li a.active .icon {
+    color: white;
+}
+
+/* Ensure text is visible for active link even if nav is not hovered (Force expansion for active item) */
+.side-nav ul li a.active .text {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    /* No transition delay needed here as it should be instantly visible if active */
+}
+
+/* Make the active link itself trigger the nav expansion appearance slightly if not hovered */
+.side-nav:not(:hover) ul li a.active {
+     /* Keep the blue background, but maybe slightly less prominent? Optional. */
+     /* background-color: rgba(0, 122, 255, 0.9); */ /* Example */
+     /* Add a subtle border instead of shadow when not hovered? Optional */
+     /* border: 1px solid rgba(0, 122, 255, 0.3); */
+     /* box-shadow: none; */
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .side-nav {
+        display: none;
+    }
+}
