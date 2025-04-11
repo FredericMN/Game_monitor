@@ -43,7 +43,7 @@ def load_game_data():
         for index, row in df.iterrows():
             # --- 基本信息 --- #
             name = row.get('名称')
-            date = str(row.get('日期')) if pd.notna(row.get('日期')) else None
+            date = str(row.get('日期'))[:10] if pd.notna(row.get('日期')) else None # 确保日期为 YYYY-MM-DD
             status = row.get('状态')
             platform = row.get('平台')
             category = row.get('分类')
@@ -66,23 +66,27 @@ def load_game_data():
             # --- 是否重点处理 (布尔值) --- #
             is_featured_raw = row.get('是否重点')
             # 检查是否非空、非 NaN，并且不是明确的否定词（如果需要的话）
-            is_featured = pd.notna(is_featured_raw) and str(is_featured_raw).strip() not in ['', '0', '否', 'False', 'false']
+            is_featured = pd.notna(is_featured_raw) and str(is_featured_raw).strip().lower() in ['true', '是', 'yes', '1']
 
             # --- 版号相关信息 --- #
-            license_checked = row.get('版号已查')
+            license_checked_raw = row.get('版号已查') # 读取原始值
+            license_checked = pd.notna(license_checked_raw) and str(license_checked_raw).strip().lower() in ['true', '是', 'yes', '1'] # 转换布尔值
             license_name = row.get('版号名称')
             approval_number = row.get('批准文号')
             publication_number = row.get('出版物号')
-            approval_date = str(row.get('批准日期')) if pd.notna(row.get('批准日期')) else None
+            approval_date = str(row.get('批准日期'))[:10] if pd.notna(row.get('批准日期')) else None # 确保日期格式
             publishing_unit = row.get('出版单位')
             operating_unit = row.get('运营单位')
             license_game_type = row.get('版号游戏类型')
             application_category = row.get('申报类别')
             license_multiple_results = row.get('版号多结果')
 
-            # --- 其他信息 --- #
-            manual_checked_raw = row.get('是否人工校对')
-            manual_checked = pd.notna(manual_checked_raw) and str(manual_checked_raw).strip().lower() in ['是', 'true', '1', 'yes']
+            # --- 其他信息 (修改) --- #
+            manual_checked_raw = row.get('是否人工校对') # 读取原始值
+            # 保留原始状态字符串，用于过滤"错误"
+            manual_check_status = str(manual_checked_raw).strip() if pd.notna(manual_checked_raw) else ''
+            # 布尔值，表示是否明确标记为 '是/True/1/Yes'
+            manual_checked_bool = manual_check_status.lower() in ['是', 'true', '1', 'yes']
 
             game_data = {
                 'id': index, # 使用行索引作为临时 ID
@@ -111,7 +115,8 @@ def load_game_data():
                 'application_category': application_category,
                 'license_multiple_results': license_multiple_results,
                 # 其他
-                'manual_checked': manual_checked # 是否人工校对
+                'manual_checked': manual_checked_bool, # 布尔值，表示是否校对过 (是)
+                'manual_check_status': manual_check_status # 原始字符串，用于过滤 '错误'
             }
             all_games.append(game_data)
 
@@ -140,7 +145,11 @@ def home():
 def get_games():
     """返回游戏数据的 JSON 响应，支持过滤和分页"""
     game_data = load_game_data()
-    if not game_data:
+    # --- 新增：在这里过滤掉 manual_check_status 为 '错误' 的记录 ---
+    game_data_filtered = [game for game in game_data if str(game.get('manual_check_status', '')).lower() != '错误']
+    # --- 后续处理使用 game_data_filtered ---
+
+    if not game_data_filtered:
          return jsonify({'games': [], 'pagination': {'total_items': 0, 'total_pages': 1, 'current_page': 1, 'per_page': 15}})
 
     # 获取请求参数
@@ -161,7 +170,7 @@ def get_games():
     per_page = request.args.get('per_page', default=default_per_page, type=int)
 
     # 根据参数过滤数据
-    filtered_data = game_data
+    filtered_data = game_data_filtered
 
     # 按是否重点关注过滤
     if is_featured_query:
@@ -268,14 +277,20 @@ def get_games():
 # 重点游戏 API 路由 (重构逻辑)
 @app.route('/api/featured-games')
 def get_featured_games():
-    """返回重点关注的游戏数据，合并同名游戏的历史记录"""
-    all_games = load_game_data() # 加载所有游戏
+    """返回重点关注的游戏数据，合并同名游戏的历史记录，并排除错误条目"""
+    all_games = load_game_data()
     if not all_games:
         return jsonify([])
 
-    # 1. 按游戏名称分组
+    # --- 新增：在这里过滤掉 manual_check_status 为 '错误' 的记录 ---
+    all_games_valid = [game for game in all_games if str(game.get('manual_check_status', '')).lower() != '错误']
+    # --- 后续处理使用 all_games_valid ---
+
+    if not all_games_valid: return jsonify([]) # 如果过滤后为空
+
+    # 1. 按游戏名称分组 (使用过滤后的数据)
     games_by_name = {}
-    for game in all_games:
+    for game in all_games_valid: # 使用 all_games_valid
         name = game.get('name')
         if name:
             if name not in games_by_name:
@@ -330,7 +345,7 @@ def get_featured_games():
         reverse=True
     )
 
-    print(f"重构后返回 {len(featured_groups)} 个重点关注游戏组。")
+    print(f"重构后返回 {len(featured_groups)} 个重点关注游戏组 (已过滤错误条目)。")
     return jsonify(featured_groups)
 
 # --- 图片代理路由 (修改后，处理嵌套 URL) --- #

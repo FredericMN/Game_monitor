@@ -616,11 +616,12 @@ def _load_excel_data(master_excel_file, excel_columns_map):
             excel_feature_flags[key] = is_featured_excel # Store feature flag
 
             # Check manual check status using the stored string value
-            if is_manually_checked.lower() in ['true', '是', 'yes', '1']:
-                 locked_records[key] = current_game_record # Add to locked records if checked
+            # Treat '错误' also as a locked state
+            if is_manually_checked.lower() in ['true', '是', 'yes', '1', '错误']:
+                 locked_records[key] = current_game_record # Add to locked records if checked or marked as error
 
         featured_count = sum(1 for flag in excel_feature_flags.values() if flag)
-        logging.info(f"从主 Excel 加载了 {len(all_excel_records)} 条记录，其中 {len(locked_records)} 条为人工校对记录，{featured_count} 条标记为重点。")
+        logging.info(f"从主 Excel 加载了 {len(all_excel_records)} 条记录，其中 {len(locked_records)} 条为人工校对/错误标记记录，{featured_count} 条标记为重点。")
 
     except Exception as e:
         logging.error(f"读取或处理主 Excel 文件 ({master_excel_file}) 时出错: {e}", exc_info=True)
