@@ -807,7 +807,7 @@ body {
     display: flex;
     align-items: center;
     height: 44px; /* Slightly taller links */
-    padding: 0 12px; /* Horizontal padding within the link */
+    padding: 0 7px; /* Further Reduced Horizontal padding */
     color: #333; /* Default text/icon color */
     text-decoration: none;
     font-size: 0.9em;
@@ -824,7 +824,7 @@ body {
     font-size: 1.3em; /* Slightly larger icon */
     min-width: 30px; /* Ensure consistent space for icon */
     text-align: center;
-    margin-right: 12px; /* Space between icon and text */
+    margin-right: 14px; /* Increased Space between icon and text */
     transition: margin 0.3s ease;
     color: #1d1d1f; /* Darker icon color (Apple-like) */
     flex-shrink: 0; /* Prevent icon shrinking */
@@ -842,7 +842,7 @@ body {
 .side-nav:hover ul li a .text {
     opacity: 1;
     visibility: visible;
-    transform: translateX(0);
+    transform: translateX(-2px); /* Shift text slightly left when revealed */
     transition: opacity 0.3s ease 0.1s, visibility 0s ease 0s, transform 0.3s ease 0.1s;
 }
 

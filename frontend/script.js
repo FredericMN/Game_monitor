@@ -670,18 +670,29 @@ document.addEventListener('DOMContentLoaded', () => {
             link.addEventListener('click', function(e) {
                 e.preventDefault(); // 阻止默认的锚点跳转行为
                 const targetId = this.getAttribute('href').substring(1); // 获取目标 ID (#top-games-section -> top-games-section)
-                const targetElement = document.getElementById(targetId);
 
-                if (targetElement) {
-                    // 计算目标位置，考虑顶部固定导航栏的高度
-                    const navbarHeight = document.querySelector('.navbar')?.offsetHeight || 0;
-                    const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - navbarHeight - 10; // 减去导航栏高度并留一点间距
-
+                // --- 修改开始 ---
+                if (targetId === 'top-games-section') {
+                    // 如果是点击"重点关注"，滚动到页面顶部
                     window.scrollTo({
-                        top: targetPosition,
+                        top: 0,
                         behavior: 'smooth' // 平滑滚动
                     });
+                } else {
+                    // 否则，滚动到对应的区域
+                    const targetElement = document.getElementById(targetId);
+                    if (targetElement) {
+                        // 计算目标位置，考虑顶部固定导航栏的高度
+                        const navbarHeight = document.querySelector('.navbar')?.offsetHeight || 0;
+                        const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - navbarHeight - 10; // 减去导航栏高度并留一点间距
+
+                        window.scrollTo({
+                            top: targetPosition,
+                            behavior: 'smooth' // 平滑滚动
+                        });
+                    }
                 }
+                // --- 修改结束 ---
             });
         });
     }
@@ -690,8 +701,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupScrollSpy() {
         const observerOptions = {
             root: null, // 相对于视口
-            rootMargin: '-60px 0px -50% 0px', // 顶部偏移（避开导航栏），底部偏移（触发点在元素上半部分）
-            threshold: 0 // 元素一进入或离开就触发
+            rootMargin: '-50px 0px -50% 0px', // 修改：调整顶部和底部偏移
+            threshold: 0.05 // 修改：稍微增加阈值
         };
 
         const observer = new IntersectionObserver((entries) => {
