@@ -734,23 +734,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 初始化和启动 (修改) ---
     async function initialLoad() {
-        // 直接设置初始状态为 all，无需调用 updateUIForSection
+        // --- 修改开始 ---
+        // 1. 先设置好事件监听和侧边导航的基础功能
+        setupEventListeners();        // 设置所有事件监听器
+        setupSideNavScrolling();      // 新增：设置侧边导航滚动
+
+        // 2. 手动设置初始状态：默认高亮第一个导航项("重点关注")
+        // 先移除所有可能存在的 active 类
+        sideNavLinks.forEach(link => link.classList.remove('active'));
+        // 给第一个链接添加 active 类
+        const firstNavLink = document.querySelector('.side-nav-link[href="#top-games-section"]');
+        if (firstNavLink) {
+            firstNavLink.classList.add('active');
+        }
+
+        // 3. 设置顶部导航激活状态 (虽然只有一个，保持逻辑完整)
+        document.querySelectorAll('.navbar a.active').forEach(el => el.classList.remove('active'));
         const activeLink = document.querySelector(`.navbar a[data-section="all"]`);
         if (activeLink) {
             activeLink.classList.add('active');
         }
+        // 确保重点关注区域可见，设置标题
         topGamesSection.style.display = 'block';
         gamesTableTitle.textContent = '全部游戏列表';
 
-        setupEventListeners();        // 设置所有事件监听器
-        setupSideNavScrolling();      // 新增：设置侧边导航滚动
-        setupScrollSpy();             // 新增：设置滚动监听高亮
 
-        loadFeaturedGames();          // 加载首页的重点游戏卡片
-        loadTodayGames();             // 加载今日游戏
-        loadWeeklyGames();            // 加载本周游戏
-        await fetchAllGamesForFilters(); // 获取所有游戏数据并填充所有过滤器
-        loadAllGames();                // 初始加载全部游戏列表
+        // 4. 使用 Promise.all 等待关键的初始内容加载完成
+        // 这些是影响页面初始布局高度的主要部分
+        try {
+            await Promise.all([
+                loadFeaturedGames(),          // 加载首页的重点游戏卡片
+                loadTodayGames(),             // 加载今日游戏
+                loadWeeklyGames(),            // 加载本周游戏
+                fetchAllGamesForFilters(),    // 获取所有游戏数据（填充过滤器，可能影响布局较小，但也包含）
+                loadAllGames()                // 初始加载全部游戏列表（表格）
+            ]);
+            console.log("Initial content loaded.");
+        } catch (error) {
+            console.error("Error during initial content loading:", error);
+            // 即使加载出错，也要继续尝试设置滚动监听
+        }
+
+        // 5. 在内容基本加载和渲染后，再启动滚动监听
+        setupScrollSpy();             // 新增：设置滚动监听高亮 (现在位置更靠后)
+        console.log("Scroll spy setup complete.");
+        // --- 修改结束 ---
+
+        // 下面的加载逻辑已经移到 Promise.all 中
+        // loadFeaturedGames();
+        // loadTodayGames();
+        // loadWeeklyGames();
+        // await fetchAllGamesForFilters(); // await 在 Promise.all 中处理
+        // loadAllGames();
     }
 
     initialLoad(); // 执行初始加载
