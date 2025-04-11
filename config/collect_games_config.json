@@ -12,7 +12,7 @@
     "status_recruit": "测试招募",
     "keywords_no_delete": ["不删档"],
     "status_no_delete": "不删档测试",
-    "keywords_test": ["测试", "test", "beta", "限量"],
+    "keywords_test": ["测试", "test", "beta", "限量","内测"],
     "status_test": "测试",
     "keywords_preorder": ["预约", "预定", "pre", "待上线", "即将上线"],
     "status_preorder": "可预约",
