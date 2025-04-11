@@ -2913,7 +2913,6 @@
   },
   {
     "name": "阿彻威尔奇妙冒险",
-    "cleaned_name": "阿彻威尔奇妙冒险",
     "date": "2025-04-10",
     "status": "可预约",
     "platform": "安卓/iOS",
@@ -2921,10 +2920,10 @@
     "rating": 8.4,
     "publisher": "良心工作室",
     "source": "TapTap",
+    "is_featured": false,
     "link": "https://www.taptap.cn/app/717825",
     "icon_url": "https://img.tapimg.com/market/images/a38399eea4c74905fe811f6dd09e4284.png/appicon?t=1",
     "description": "《阿彻威尔奇妙冒险》是一款像素横版弹幕动作游戏，体量虽小但五脏俱全\n1.打造你的武器库。使用从环境中收集，或落败敌人掉落的物品制造超200多件武器和盔甲。\n2.技巧是关键。基于技能的子弹地狱战斗将考验你的极致反映力，同时搭配射击也需要精确和速度才能成功。\n3.自定玩法流派。通过徽章强化你的角色，强化你的武器模组创建出独属于你的游戏风格的搭配。\n4.探索阿彻威尔世界。散布在不同环境和经典地牢里的众多敌人将带你穿越不断变化的地图，而你将在那里找到完成旅程所需的独特资源。\n在这个角色扮演游戏的子弹地狱世界里拿起你的武器，开始一段旅程来纠正很久以前就开始的错误。只有你才能打败不朽守护者的邪恶力量，让世界与传说中的拱门重新统一。\n完整版本地图内容如下：\n10个大地图区域（摇篮树林、琥珀小径、蟹钳峡谷、尘埃峭壁、黑暗泥潭、雪松山峰、扭曲洞群、暗礁边缘、缠结果园、熔融裂谷）\n7个地牢区域（地衣堡垒、水晶协会、国王之墓、伞菌王宫、沉没陵墓、林心圣殿、被放逐的刽子手）\n1个终极关卡（建造之室）",
-    "is_featured": false,
     "version_checked": true,
     "nppa_name": "阿彻威尔奇妙冒险",
     "approval_num": "国新出审〔2023〕2197号",
@@ -2935,7 +2934,8 @@
     "game_type_version": "进口网络游戏",
     "declaration_category": "移动",
     "multiple_results": "否",
-    "manual_checked": ""
+    "manual_checked": "",
+    "cleaned_name": "阿彻威尔奇妙冒险"
   },
   {
     "name": "镭明闪击",
@@ -3069,7 +3069,6 @@
   },
   {
     "name": "灵兽大冒险",
-    "cleaned_name": "灵兽大冒险",
     "date": "2025-04-10",
     "status": "可预约",
     "platform": "安卓/iOS",
@@ -3077,10 +3076,10 @@
     "rating": 0.0,
     "publisher": "网易游戏",
     "source": "TapTap",
+    "is_featured": false,
     "link": "https://www.taptap.cn/app/747909",
     "icon_url": "https://img.tapimg.com/market/images/bfed52bc18c277db5e1b056f53e8694e.png/appicon?t=1",
     "description": "〓游戏简介〓\n网易全新出品【竖版回合制MMO捉宠】手游——《灵兽大冒险》开启预约啦！\n在这里，你将从【魔王寨、方寸山、天宫、盘丝洞、地府】五大门派中自由选择身份进入灵兽世界，在经典回合制战斗中，总有一款流派适合你；\n除此之外，你还能体验围绕【灵兽】展开的一系列大地图捉宠、进化、融合等玩法，培养属于自己的灵兽，以不同阵容搭配体验多种回合策略，与灵兽一起征战三界；\n同时，你可以在线组队、轻松结交同道好友；在商城摆摊、自由交易珍稀道具；也可以建设灵兽家园，让灵兽们为你打工，躺平收取资源……诸多玩法，等你来探索！\n事不宜迟，快来成为灵兽师，捉个灵兽大冒险吧！\n\n【扔个葫芦捉灵兽】\n与各色灵兽相遇，用葫芦将其通通收走，陪你大冒险！\n\n【回合策略也能爽】\n享受运筹帷幄的回合制战斗，养成强力灵兽同你征战四方！\n\n【万人同服真热闹】\n组队不愁，轻松社交，与好友携手一起闯荡世界！\n\n【灵兽打工筑家园】\n自由建设专属家园，躺平一键收取资源！",
-    "is_featured": false,
     "version_checked": true,
     "nppa_name": "灵兽大冒险",
     "approval_num": "国新出审〔2025〕302号",
@@ -3091,7 +3090,8 @@
     "game_type_version": "国产网络游戏",
     "declaration_category": "移动、客户端",
     "multiple_results": "否",
-    "manual_checked": ""
+    "manual_checked": "",
+    "cleaned_name": "灵兽大冒险"
   },
   {
     "name": "欢乐桌球",
@@ -3459,18 +3459,17 @@
   },
   {
     "name": "Chasing Kaleidorider",
-    "cleaned_name": "Chasing Kaleidorider",
     "date": "2025-04-10",
     "status": "新游爆料",
     "platform": "安卓/iOS",
     "category": "摩托车/美少女/二次元",
     "rating": 9.2,
-    "publisher": "新闻消息",
+    "publisher": "腾讯",
     "source": "TapTap",
+    "is_featured": false,
     "link": "https://www.taptap.cn/app/738083",
     "icon_url": "https://img.tapimg.com/market/images/b8e8395e1322a61d0df80d0e6598e802.png/appicon?t=1",
     "description": "那些从天而降的机车美少女们，外表看起来与一般人并无不同。魔法般变出的机车和枪械、在天空航行的秘密基地、出现在你眼前不可名状的「异常」……与她们有关的一切，那样不可思议，却又无比真实。\n当虚构的怪异开始入侵现实，都市中四处弥漫着阴谋的味道…\n打破常规的异像源源不断袭来，为了守护而执行的「裁决」，是否就是所谓的正确答案？\n误打误撞揭开非日常的一角，在这座名为「特米纳尔」的都市，你终于有机会再一次做出选择——\n你，想去纠正那些错误吗？\n\n☆机车×美少女 另类心跳之旅\n穿梭于意识与现实之间，十余名姿态各异的机车少女待你领航！柔美身姿与冰冷张狂的机车外壳紧密贴合，引擎轰鸣引爆使心率破表的性感炸弹！\n\n☆酣畅淋漓 畅享高速战斗\n指挥骑乘机车的美少女，追逐都市中的异象而战斗！总攻开启，一键出击，简单易懂好上手的操作手法与技巧的策略玩法摩擦出充满速度感的激爽火花！\n\n☆缔结羁绊 与她的心动日常\n相处时，心中萌生的悸动是…？危机四伏的冒险之外，感受与她的日常点滴，确信她的眸光之中唯你一人，她所不为人知的另外一面，仅向你展露！\n\n☆全3D演出 动态视觉冲击\n剧情与战斗全程3D演出，拒绝幻灯片式剧情演绎，精致建模还原立绘，不断探索更加多样化的剧情表现，只为生动演绎美少女们的一颦一笑！\n\n「从现在起，你的人生将会改变。」——啊？我打「癔兽」？真的是假的？\n「领航员，请带领我们战斗，直到最后…」",
-    "is_featured": false,
     "version_checked": true,
     "nppa_name": "",
     "approval_num": "",
@@ -3481,7 +3480,8 @@
     "game_type_version": "",
     "declaration_category": "",
     "multiple_results": "",
-    "manual_checked": ""
+    "manual_checked": "",
+    "cleaned_name": "Chasing Kaleidorider"
   },
   {
     "name": "火影忍者：木叶高手",
