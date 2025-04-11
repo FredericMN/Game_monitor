@@ -533,134 +533,191 @@ def _load_excel_data(master_excel_file, excel_columns_map):
     if not os.path.exists(master_excel_file):
         logging.info(f"主 Excel 文件 {master_excel_file} 不存在。")
         return all_excel_records, locked_records, excel_feature_flags
-        
+
     try:
         logging.info(f"读取主 Excel 文件: {master_excel_file}")
         df_excel = pd.read_excel(master_excel_file, engine='openpyxl', dtype=str)
-        excel_rename_map_reverse = {v: k for k, v in excel_columns_map.items()}
-        df_excel.rename(columns=lambda c: excel_rename_map_reverse.get(c, c), inplace=True)
+        # Use internal names directly if possible, otherwise map from Excel headers
+        internal_to_excel = {v: k for k, v in excel_columns_map.items()}
+        excel_cols_present = list(df_excel.columns)
+        rename_map = {}
+        for internal_name, excel_name in internal_to_excel.items():
+            if excel_name in excel_cols_present:
+                 rename_map[excel_name] = internal_name
+            # Keep columns not in map as is for potential extra data
+            # else:
+            #     if internal_name not in excel_cols_present: # Avoid renaming if internal name already exists
+            #         # If internal name isn't present either, we can't map easily, log?
+            #         pass
 
-        if 'rating' in df_excel.columns: 
+        df_excel.rename(columns=rename_map, inplace=True)
+
+
+        # Standardize specific columns after potential rename
+        if 'rating' in df_excel.columns:
              df_excel['rating'] = pd.to_numeric(df_excel['rating'], errors='coerce').fillna(0.0)
-        is_featured_col = '是否重点'
-        version_checked_col = '版号已查'
-        manual_checked_col = '是否人工校对'
-        
+
+        # Use internal names now for lookup
+        is_featured_col = 'is_featured'
+        version_checked_col = 'version_checked'
+        manual_checked_col = 'manual_checked'
+        name_col = 'name'
+        date_col = 'date'
+        cleaned_name_col = 'cleaned_name' # Assume cleaned_name might exist in Excel
+
         excel_records_list = df_excel.to_dict('records')
 
         for record in excel_records_list:
             # Create a dictionary for the current record using internal field names
             current_game_record = {}
-            name = clean_game_name(record.get('名称', ''))
-            date_raw = record.get('日期')
+            # Prioritize existing cleaned_name, else clean the 'name'
+            original_name = record.get(name_col, '')
+            if cleaned_name_col in record and pd.notna(record[cleaned_name_col]) and record[cleaned_name_col].strip():
+                 name = record[cleaned_name_col].strip()
+                 logging.debug(f"Using existing cleaned_name '{name}' from Excel for '{original_name}'")
+            else:
+                 name = clean_game_name(original_name)
+                 if not name: name = str(original_name).strip() # Fallback if cleaning results in empty string
+                 logging.debug(f"Cleaned name '{original_name}' to '{name}'")
+
+
+            date_raw = record.get(date_col)
             try:
-                if isinstance(date_raw, datetime): date_str = date_raw.strftime('%Y-%m-%d')
-                elif isinstance(date_raw, str): date_str = pd.to_datetime(date_raw).strftime('%Y-%m-%d')
-                else: date_str = "0000-00-00"
+                # Handle various date representations
+                if pd.isna(date_raw): date_str = "0000-00-00"
+                elif isinstance(date_raw, datetime): date_str = date_raw.strftime('%Y-%m-%d')
+                else: # Try converting string or number
+                    date_str = pd.to_datetime(str(date_raw)).strftime('%Y-%m-%d')
             except Exception:
-                 date_str = str(date_raw)[:10] 
+                 # Fallback: try to extract YYYY-MM-DD if possible, else keep raw
+                 date_str = str(date_raw)[:10] if isinstance(date_raw, str) and len(date_raw) >= 10 else "0000-00-00"
                  logging.warning(f"无法标准化Excel日期 '{date_raw}' for game '{name}', 使用 '{date_str}'")
             key = (name, date_str)
 
+            # Use internal column names now
             is_featured_excel = str(record.get(is_featured_col, '')).strip().lower() in ['true', '是', 'yes', '1']
-            is_manually_checked = str(record.get(manual_checked_col, '')).strip().lower() in ['true', '是', 'yes', '1']
+            is_manually_checked = str(record.get(manual_checked_col, '')).strip() # Keep the string value for checking
 
-            # Populate the record dict with all fields
-            for excel_field, internal_field in excel_columns_map.items():
-                value = record.get(excel_field)
+            # Populate the record dict using internal field names mapped from config
+            for internal_field in excel_columns_map.values():
+                value = record.get(internal_field) # Direct access using internal name
                 if internal_field == 'rating': current_game_record[internal_field] = float(value) if pd.notna(value) else 0.0
                 elif internal_field == 'is_featured': current_game_record[internal_field] = is_featured_excel
-                elif internal_field == 'version_checked': current_game_record[internal_field] = str(record.get(version_checked_col, '')).strip().lower() in ['true', '是', 'yes', '1'] if version_checked_col in record else False
-                elif internal_field == 'manual_checked': current_game_record[internal_field] = str(record.get(manual_checked_col, '')).strip() # Keep original string
+                elif internal_field == 'version_checked': current_game_record[internal_field] = str(value).strip().lower() in ['true', '是', 'yes', '1'] if pd.notna(value) else False
+                elif internal_field == 'manual_checked': current_game_record[internal_field] = str(value).strip() if pd.notna(value) else "" # Keep original string note
                 else: current_game_record[internal_field] = str(value).strip() if pd.notna(value) else ""
-            
-            current_game_record['name'] = name # Ensure cleaned name is used
-            current_game_record['date'] = date_str # Ensure standardized date is used
-            current_game_record['cleaned_name'] = name # Add cleaned_name field
-            
+
+            # Ensure essential fields are correctly set
+            current_game_record[name_col] = name # Use the determined cleaned/existing name
+            current_game_record[date_col] = date_str # Use standardized date
+            current_game_record[cleaned_name_col] = name # Explicitly add/overwrite cleaned_name field
+
             all_excel_records.append(current_game_record) # Add to the full list
             excel_feature_flags[key] = is_featured_excel # Store feature flag
-            
-            if is_manually_checked:
-                locked_records[key] = current_game_record # Add to locked records if checked
+
+            # Check manual check status using the stored string value
+            if is_manually_checked.lower() in ['true', '是', 'yes', '1']:
+                 locked_records[key] = current_game_record # Add to locked records if checked
 
         featured_count = sum(1 for flag in excel_feature_flags.values() if flag)
         logging.info(f"从主 Excel 加载了 {len(all_excel_records)} 条记录，其中 {len(locked_records)} 条为人工校对记录，{featured_count} 条标记为重点。")
-        
+
     except Exception as e:
         logging.error(f"读取或处理主 Excel 文件 ({master_excel_file}) 时出错: {e}", exc_info=True)
         return [], {}, {} # Return empty on error
-        
+
     return all_excel_records, locked_records, excel_feature_flags
 
-def _fetch_new_data(fetch_taptap, fetch_16p):
-    """根据选择调用爬虫并加载新数据 (适配固定文件名)"""
+def _fetch_new_data(fetch_taptap, fetch_16p, process_history_only=False):
+    """根据选择调用爬虫(如果不是 history_only 模式)并加载新数据"""
     newly_fetched_games = []
     current_date_str = datetime.now().strftime("%Y-%m-%d")
     taptap_output_file = os.path.join(data_dir, 'taptap_games.jsonl')
     p16_output_file = os.path.join(data_dir, 'p16_games.jsonl')
 
+    # --- TapTap ---
     if fetch_taptap and fetch_taptap_func:
-        logging.info("--- 开始获取 TapTap 数据 --- ")
-        try:
-            # 运行 TapTap 爬虫，它会追加到 taptap_games.jsonl
-            taptap_new_count_reported = fetch_taptap_func(current_date_str)
-            # 不再依赖返回值来决定是否读取，总是尝试读取并过滤
-            if os.path.exists(taptap_output_file):
-                tap_games_today = []
-                with open(taptap_output_file, 'r', encoding='utf-8') as f_tap:
-                    for line in f_tap:
-                        try:
-                            game = json.loads(line)
-                            # 筛选出当天的数据
-                            if game.get('date') == current_date_str:
-                                tap_games_today.append(game)
-                        except json.JSONDecodeError:
-                             logging.warning(f"解析 taptap_games.jsonl 时跳过无效行: {line.strip()}")
-                
-                if tap_games_today:
-                     logging.info(f"从 TapTap 文件 ({taptap_output_file}) 加载并筛选出 {len(tap_games_today)} 条与日期 {current_date_str} 相关的数据。")
-                     newly_fetched_games.extend(tap_games_today)
-                else:
-                     logging.info(f"TapTap 文件 ({taptap_output_file}) 中未找到与日期 {current_date_str} 相关的数据。爬虫报告新增 {taptap_new_count_reported} 条。")
-            else: 
-                # 文件本身不存在，说明爬虫可能从未成功运行或文件被删除
-                logging.warning(f"TapTap 数据文件 {taptap_output_file} 不存在。即使爬虫报告成功({taptap_new_count_reported}条)，也无法加载数据。")
-                
-        except Exception as e: logging.error(f"获取或处理 TapTap 数据时出错: {e}", exc_info=True)
-    elif fetch_taptap: logging.warning("TapTap 模块未加载，跳过爬取。")
-    else: logging.info("根据用户选择，跳过 TapTap 数据获取。")
+        if not process_history_only: # Only run scraper if not in history-only mode
+             logging.info("--- (在线) 开始获取 TapTap 数据 --- ")
+             try:
+                 taptap_new_count_reported = fetch_taptap_func(current_date_str)
+                 logging.info(f"TapTap 爬虫完成，报告新增 {taptap_new_count_reported} 条记录到文件。")
+             except Exception as e:
+                 logging.error(f"在线获取 TapTap 数据时出错: {e}", exc_info=True)
+                 taptap_new_count_reported = 0 # Assume failure means 0 new
+        else:
+             logging.info("--- (本地) 跳过在线获取 TapTap 数据 (history-only模式) ---")
+             taptap_new_count_reported = "(未执行)" # Indicate scraper didn't run
 
+        # Always try to load from file
+        logging.info(f"--- (本地) 开始加载 TapTap 文件: {taptap_output_file} ---")
+        if os.path.exists(taptap_output_file):
+            tap_all_games = []
+            with open(taptap_output_file, 'r', encoding='utf-8') as f_tap:
+                for line in f_tap:
+                    try:
+                        game = json.loads(line)
+                        tap_all_games.append(game)
+                    except json.JSONDecodeError:
+                         logging.warning(f"解析 {os.path.basename(taptap_output_file)} 时跳过无效行: {line.strip()}")
+            if tap_all_games:
+                 logging.info(f"从 TapTap 文件加载了 {len(tap_all_games)} 条数据。")
+                 newly_fetched_games.extend(tap_all_games)
+            else:
+                 logging.info(f"TapTap 文件为空或无法解析。爬虫报告新增 {taptap_new_count_reported} 条。")
+        else:
+            logging.warning(f"TapTap 数据文件 {taptap_output_file} 不存在。即使爬虫报告成功({taptap_new_count_reported}条)，也无法加载数据。")
+
+    elif fetch_taptap: logging.warning("TapTap 模块未加载，跳过 TapTap 处理。")
+    else: logging.info("根据用户选择，跳过 TapTap 数据处理。")
+
+
+    # --- 16p ---
     if fetch_16p and fetch_16p_func:
-        logging.info("--- 开始获取 16p (好游快爆/AppStore) 数据 --- ")
-        try:
-            # 运行 16p 爬虫，它会追加到 p16_games.jsonl
-            p16_new_count_reported = fetch_16p_func()
-            # 不再依赖返回值或查找最新文件，直接读取固定文件
-            if os.path.exists(p16_output_file):
-                with open(p16_output_file, 'r', encoding='utf-8') as f_16p:
-                     # 加载所有 p16 数据，让后续去重逻辑处理
-                     p16_all_games = [json.loads(line) for line in f_16p]
-                
-                if p16_all_games:
-                     logging.info(f"从 16p 文件 ({p16_output_file}) 加载了 {len(p16_all_games)} 条数据。")
-                     # 确保日期字段存在 (虽然爬虫现在应该会处理)
-                     for game in p16_all_games:
-                         if 'date' not in game or not game['date']:
-                             game['date'] = game.get('status_date') or current_date_str # 沿用之前的备用逻辑
-                     newly_fetched_games.extend(p16_all_games)
-                else:
-                    logging.info(f"16p 文件 ({p16_output_file}) 为空。爬虫报告新增 {p16_new_count_reported} 条。")
-            else: 
-                 logging.warning(f"16p 数据文件 {p16_output_file} 不存在。即使爬虫报告成功({p16_new_count_reported}条)，也无法加载数据。")
-                
-        except Exception as e: logging.error(f"获取或处理 16p 数据时出错: {e}", exc_info=True)
-    elif fetch_16p: logging.warning("16p 模块未加载，跳过爬取。")
-    else: logging.info("根据用户选择，跳过 16p 数据获取。")
+        if not process_history_only: # Only run scraper if not in history-only mode
+             logging.info("--- (在线) 开始获取 16p (好游快爆/AppStore) 数据 --- ")
+             try:
+                 p16_new_count_reported = fetch_16p_func()
+                 logging.info(f"16p 爬虫完成，报告新增 {p16_new_count_reported} 条记录到文件。")
+             except Exception as e:
+                 logging.error(f"在线获取 16p 数据时出错: {e}", exc_info=True)
+                 p16_new_count_reported = 0
+        else:
+             logging.info("--- (本地) 跳过在线获取 16p 数据 (history-only模式) ---")
+             p16_new_count_reported = "(未执行)"
 
-    logging.info(f"总共获取到 {len(newly_fetched_games)} 条待处理的新游戏数据。") # 这是合并后的列表
+        # Always try to load from file
+        logging.info(f"--- (本地) 开始加载 16p 文件: {p16_output_file} ---")
+        if os.path.exists(p16_output_file):
+            try: # Add try-except for file reading/parsing
+                 with open(p16_output_file, 'r', encoding='utf-8') as f_16p:
+                      p16_all_games = []
+                      for line in f_16p:
+                          try:
+                               game = json.loads(line)
+                               # Ensure date exists (maybe redundant now but safe)
+                               if 'date' not in game or not game['date']:
+                                   game['date'] = game.get('status_date') or current_date_str
+                               p16_all_games.append(game)
+                          except json.JSONDecodeError:
+                               logging.warning(f"解析 {os.path.basename(p16_output_file)} 时跳过无效行: {line.strip()}")
+                 if p16_all_games:
+                      logging.info(f"从 16p 文件加载了 {len(p16_all_games)} 条数据。")
+                      newly_fetched_games.extend(p16_all_games)
+                 else:
+                      logging.info(f"16p 文件为空或无法解析。爬虫报告新增 {p16_new_count_reported} 条。")
+            except Exception as e:
+                 logging.error(f"读取或解析 16p 文件 {p16_output_file} 时出错: {e}", exc_info=True)
+        else:
+             logging.warning(f"16p 数据文件 {p16_output_file} 不存在。即使爬虫报告成功({p16_new_count_reported}条)，也无法加载数据。")
+
+    elif fetch_16p: logging.warning("16p 模块未加载，跳过 16p 处理。")
+    else: logging.info("根据用户选择，跳过 16p 数据处理。")
+
+    log_mode = "本地文件" if process_history_only else "在线爬取+本地文件"
+    logging.info(f"通过 '{log_mode}' 模式，总共获取到 {len(newly_fetched_games)} 条来自 JSONL 文件的数据待处理。")
     return newly_fetched_games
-    
+
 def _run_version_matching(games_list, locked_records, description="数据"):
     """对未锁定的游戏运行版号匹配并合并结果"""
     if not match_versions_func or not games_list:
@@ -775,98 +832,92 @@ def collect_all_game_data(fetch_taptap=True, fetch_16p=True, process_history_onl
         return
 
     start_time = time.time()
-    task_description = "基于Excel历史整理与版号匹配" if process_history_only else "爬取新数据并与Excel整合"
+    # Updated task description logic
+    if process_history_only:
+        task_description = "处理本地文件 (Excel + JSONL), 不执行在线爬取"
+    else:
+        task_description = "在线爬取新数据并整合本地文件 (Excel + JSONL)"
     logging.info(f"{'='*20} 开始执行任务: {task_description} {'='*20}")
 
     master_excel_file = os.path.join(data_dir, "all_games_data.xlsx")
-    master_json_file = os.path.join(data_dir, "all_games.json") # Still used for output
+    master_json_file = os.path.join(data_dir, "all_games.json")
     excel_columns_map = get_excel_columns()
 
     final_games_list = []
     execution_successful = False
 
     try:
-        # 1. Load Base Data From Excel
+        # 1. Load Base Data From Excel (Always)
         base_data_from_excel, locked_records, excel_feature_flags = _load_excel_data(master_excel_file, excel_columns_map)
-        # JSON history is no longer loaded as input
-        # existing_games_from_json = _load_json_history(...) # REMOVED
 
-        if process_history_only:
-            logging.info("模式: 只处理 Excel 数据。")
-            games_to_process = base_data_from_excel # Start with all Excel data
-            if not games_to_process:
-                logging.warning("Excel 数据为空，无法处理。")
-                temp_final_list = []
-            else:
-                # Clean names (ensure cleaned_name exists)
-                # Note: _load_excel_data already does cleaning and adds cleaned_name
-                logging.info("--- 对 Excel 数据进行过滤和匹配 --- ")
-                
-                # Separate locked/unlocked from Excel data
-                unlocked_excel_data = [g for g in games_to_process if (g.get('cleaned_name'), g.get('date', '0000-00-00')) not in locked_records]
-                
-                # Filter unlocked Excel data
-                filtered_unlocked_excel = _filter_appstore_games(unlocked_excel_data, is_history_data=True)
-                
-                # Run version matching on filtered, unlocked Excel data
-                # Pass locked_records to allow skipping inside the function
-                matched_unlocked_excel = _run_version_matching(filtered_unlocked_excel, locked_records, description="Excel历史数据")
-                
-                # Combine locked + matched unlocked for deduplication (handles potential duplicates within Excel)
-                combined_excel_for_dedup = list(locked_records.values()) + matched_unlocked_excel
-                deduplicated_list = _deduplicate_games(combined_excel_for_dedup, locked_records)
-                
-                # Standardize the deduplicated list
-                logging.info("--- 标准化最终 Excel 数据 --- ")
-                temp_final_list = standardize_game_data(deduplicated_list, excel_columns_map)
-                # Re-apply feature flags (should be preserved from _load_excel_data, but safe check)
-                for game in temp_final_list: 
-                    key = (game.get('cleaned_name'), game.get('date'))
-                    game['is_featured'] = excel_feature_flags.get(key, False)
-                        
-        else: # Fetch new data mode
-            logging.info("模式: 爬取新数据并与 Excel 数据整合。")
-            # 2. Fetch New Data
-            newly_fetched_games = _fetch_new_data(fetch_taptap, fetch_16p)
-            
-            # 3. Process New Data
-            logging.info("--- 处理新获取的数据 --- ")
-            processed_new_games = []
-            if newly_fetched_games:
-                # Clean names
-                for game in newly_fetched_games: 
-                     if 'cleaned_name' not in game: game['cleaned_name'] = clean_game_name(game.get('name'))
-                # Filter 
-                filtered_new_games = _filter_appstore_games(newly_fetched_games, is_history_data=False)
-                # Match versions (non-locked only)
-                processed_new_games = _run_version_matching(filtered_new_games, locked_records, description="新数据")
-                # Standardize 
-                processed_new_games = standardize_game_data(processed_new_games, excel_columns_map)
-                # Apply feature flags to standardized new data based on Excel flags (if name/date matches)
-                for std_game in processed_new_games:
-                    key = (std_game['cleaned_name'], std_game['date'])
-                    if key not in locked_records: # Only apply if not locked
-                        std_game['is_featured'] = excel_feature_flags.get(key, False)
-                            
-            # 4. Merge & Deduplicate All (Base Excel + Processed New)
-            logging.info("--- 开始合并 Excel 基础数据和处理后的新数据 --- ")
-            # Use base_data_from_excel which contains ALL original excel rows (locked and unlocked)
-            # Use processed_new_games which contains standardized, matched, filtered new games
-            combined_games = base_data_from_excel + processed_new_games 
-            logging.info(f"合并后共 {len(combined_games)} 条数据待去重。")
-            temp_final_list = _deduplicate_games(combined_games, locked_records)
+        # 2. Fetch/Load Data from JSONL files (Calls scraper only if not history_only)
+        # Pass process_history_only flag to the function
+        data_from_jsonl = _fetch_new_data(fetch_taptap, fetch_16p, process_history_only)
+
+        # 3. Process Data from JSONL files
+        logging.info("--- 处理来自 JSONL 文件的数据 --- ")
+        processed_jsonl_data = []
+        if data_from_jsonl:
+            # Clean names first
+            for game in data_from_jsonl:
+                 # Ensure cleaned_name exists for key calculation/filtering
+                 name_for_key = game.get('cleaned_name')
+                 if not name_for_key:
+                      name_for_key = clean_game_name(game.get('name'))
+                      game['cleaned_name'] = name_for_key # Store back if newly calculated
+
+            # Filter JSONL data (use process_history_only to decide if it's "history")
+            # Treat loaded JSONL data as "new" unless in history_only mode
+            is_history_filter = process_history_only
+            logging.info(f"对 JSONL 数据应用 AppStore 过滤规则 (is_history_data={is_history_filter})")
+            filtered_jsonl = _filter_appstore_games(data_from_jsonl, is_history_data=is_history_filter)
+
+            # Run version matching on filtered, non-locked JSONL data
+            logging.info(f"对 {len(filtered_jsonl)} 条过滤后的 JSONL 数据进行版号匹配 (跳过锁定记录)")
+            # Pass locked_records for skipping check inside
+            matched_jsonl = _run_version_matching(filtered_jsonl, locked_records, description="JSONL数据")
+
+            # Standardize the matched JSONL data
+            logging.info("标准化匹配后的 JSONL 数据")
+            processed_jsonl_data = standardize_game_data(matched_jsonl, excel_columns_map)
+
+            # Apply feature flags from Excel to standardized JSONL data if name/date matches & not locked
+            logging.info("尝试从 Excel 历史记录应用 '是否重点' 标记到 JSONL 数据 (如果匹配且未锁定)")
+            applied_flag_count = 0
+            for std_game in processed_jsonl_data:
+                key = (std_game.get('cleaned_name'), std_game.get('date'))
+                if key in excel_feature_flags and key not in locked_records:
+                    std_game['is_featured'] = excel_feature_flags[key]
+                    if excel_feature_flags[key]: # Only count if flag was True
+                         applied_flag_count +=1
+            logging.info(f"已将 {applied_flag_count} 个 '重点' 标记从 Excel 应用到匹配的 JSONL 记录。")
+        else:
+             logging.info("未从 JSONL 文件加载到数据，跳过处理步骤。")
+
+
+        # 4. Merge All Data (Base Excel + Processed JSONL)
+        logging.info("--- 开始合并 Excel 基础数据和处理后的 JSONL 数据 --- ")
+        # Use base_data_from_excel (all original excel rows)
+        # Use processed_jsonl_data (standardized, matched, filtered JSONL data)
+        combined_games = base_data_from_excel + processed_jsonl_data
+        logging.info(f"合并后共 {len(combined_games)} 条数据待去重。")
+
+        # 5. Deduplicate Combined List
+        # Pass the combined list and locked records dictionary
+        temp_final_list = _deduplicate_games(combined_games, locked_records)
+
 
         # --- Common Post-Processing Steps --- #
         if not temp_final_list:
             logging.warning("最终数据列表为空，流程结束。")
         else:
-            # 5. Resolve Online Conflicts (Applied to the deduplicated list)
+            # 6. Resolve Online Conflicts (Applied to the deduplicated list)
             resolved_list = _resolve_online_conflicts(temp_final_list)
-            
-            # 6. Sort
+
+            # 7. Sort
             logging.info("--- 按日期倒序排列数据 ---")
-            resolved_list.sort(key=lambda x: x.get('date', '0000-00-00'), reverse=True)
-            
+            resolved_list.sort(key=lambda x: (x.get('date', '0000-00-00'), x.get('name', '')), reverse=True) # Sort by date then name
+
             final_games_list = resolved_list
             execution_successful = True
 
