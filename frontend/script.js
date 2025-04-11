@@ -307,6 +307,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- 更新分页控件状态 ---
+    function updatePaginationControls(totalItems, totalPagesData, currentPageData) {
+        totalPages = totalPagesData; // 更新全局 totalPages
+        currentPage = currentPageData; // 更新全局 currentPage
+
+        if (!paginationControls) return; // 确保元素存在
+
+        if (totalItems === 0 || totalPages <= 1) { // 如果没有数据或只有一页
+            pageInfo.textContent = totalItems === 0 ? '无数据' : `页码 1 / 1`;
+            prevPageButton.disabled = true;
+            nextPageButton.disabled = true;
+            // 可以选择隐藏分页控件
+            // paginationControls.style.display = 'none';
+        } else {
+            pageInfo.textContent = `页码 ${currentPage} / ${totalPages}`;
+            prevPageButton.disabled = currentPage <= 1;
+            nextPageButton.disabled = currentPage >= totalPages;
+            // 确保分页控件可见
+            // paginationControls.style.display = 'flex';
+        }
+    }
+
     // --- 更新UI以反映当前选择的页签 (简化) ---
     function updateUIForSection(section) {
         // currentSection = section; // 不再需要
